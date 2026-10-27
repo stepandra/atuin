@@ -84,6 +84,10 @@ pub async fn install(harness: AnyHarness) -> Result<(), InstallMcpError> {
             run("claude", &["mcp", "add", "--scope", "user", "atuin", "--", atuin, "mcp"]).await
         }
         AnyHarness::Codex(_) => run("codex", &["mcp", "add", "atuin", "--", atuin, "mcp"]).await,
+        // Writes `~/.copilot/mcp-config.json`, replacing a server of the name.
+        AnyHarness::Copilot(_) => {
+            run("copilot", &["mcp", "add", "atuin", "--", atuin, "mcp"]).await
+        }
         // Not `opencode mcp add`: 1.x's only prompts, and 2.0's writes `mcp.servers`, which 2.0
         // doesn't load. Both load `mcp.<name>`.
         AnyHarness::Opencode(_) => install_opencode(&config_path(harness), atuin).await,

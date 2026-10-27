@@ -65,6 +65,10 @@ pub enum NotResumable {
     #[error(transparent)]
     Empty(#[from] continuation::NothingToContinue),
 
+    /// A continuation into a harness whose sessions atuin never writes.
+    #[error("atuin can't write {0} sessions")]
+    Unwritable(&'static str),
+
     #[error(transparent)]
     Harness(#[from] ResumeError),
 }
@@ -634,7 +638,8 @@ impl HarnessResumer {
                     .or_else(|| local_dir(session.cwd.as_deref(), &self.context));
                 let live = self.machine.is_live(harness, id, dir.as_deref()).await;
                 let resume = Resume {
-                    catch_up: true,
+                    // A copy atuin never writes resumes as it is.
+                    catch_up: harness.writes_transcripts(),
                     live: live != Liveness::NotLive,
                     ..Resume::ready(harness.resume(&target, template)?.prepare()?)
                 };
@@ -653,6 +658,15 @@ impl HarnessResumer {
         };
         self.check_installed(&resume.0.plan)?;
         Ok(resume)
+    }
+}
+
+impl From<continuation::ContinueError> for NotResumable {
+    fn from(err: continuation::ContinueError) -> Self {
+        match err {
+            continuation::ContinueError::NothingToContinue(empty) => Self::Empty(empty),
+            continuation::ContinueError::Unwritable(harness) => Self::Unwritable(harness),
+        }
     }
 }
 
@@ -687,6 +701,9 @@ impl Resumer for HarnessResumer {
         let Some(Copy { tip, dir }) = copy else {
             return ready(resume.plan, None);
         };
+        if !resume.catch_up {
+            return ready(resume.plan, None);
+        }
         let tip = match tip {
             Ok(Some(tip)) => Ok(tip),
             Ok(None) => {
@@ -865,14 +882,16 @@ impl Resumer for HarnessResumer {
         }
         AnyHarness::all()
             .iter()
+            .filter(|harness| harness.writes_transcripts())
             .map(HarnessKind::from)
             .filter(|kind| *kind != own && self.runs_here(*kind, session))
             .collect()
     }
 
-    /// Every harness atuin writes forks (Copilot isn't one), when installed.
+    /// Every harness atuin writes forks, when installed.
     fn can_fork(&self, session: &SessionRow) -> bool {
-        self.runs_here(session.handle.harness, session)
+        session.handle.harness.harness().is_some_and(|h| h.writes_transcripts())
+            && self.runs_here(session.handle.harness, session)
     }
 
     async fn fork(
