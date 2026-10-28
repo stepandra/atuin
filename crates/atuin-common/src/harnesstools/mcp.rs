@@ -7,7 +7,7 @@ use std::process::Stdio;
 use serde_json::{Value, json};
 
 use super::pi::Flavour;
-use super::{AnyHarness, codex, opencode};
+use super::{AnyHarness, codex, copilot, opencode};
 use crate::dirs::home_dir;
 use crate::env::var_nonempty;
 use crate::path::{AbsPathBuf, PathBufExt as _};
@@ -60,6 +60,7 @@ fn config_path(harness: AnyHarness) -> PathBuf {
             |dir| PathBuf::from(dir).joined(".claude.json"),
         ),
         AnyHarness::Codex(_) => codex::home().joined("config.toml"),
+        AnyHarness::Copilot(_) => copilot::copilot_home().joined("mcp-config.json"),
         AnyHarness::Opencode(_) => opencode::config_dir().joined("opencode.json"),
         AnyHarness::Pi(pi) => pi.flavour().agent_dir().joined("mcp.json"),
     }
@@ -221,6 +222,7 @@ mod tests {
     #[rstest]
     #[case("claude-code", ".claude.json")]
     #[case("codex", ".codex/config.toml")]
+    #[case("copilot", ".copilot/mcp-config.json")]
     #[case("opencode", ".config/opencode/opencode.json")]
     #[case("pi", ".pi/agent/mcp.json")]
     #[case("omp", ".omp/agent/mcp.json")]
@@ -244,6 +246,7 @@ mod tests {
     #[rstest]
     #[case("claude-code", "CLAUDE_CONFIG_DIR", ".claude.json")]
     #[case("codex", "CODEX_HOME", "config.toml")]
+    #[case("copilot", "COPILOT_HOME", "mcp-config.json")]
     #[case("opencode", "XDG_CONFIG_HOME", "opencode/opencode.json")]
     #[case("pi", "PI_CODING_AGENT_DIR", "mcp.json")]
     #[case("omp", "PI_CODING_AGENT_DIR", "mcp.json")]
