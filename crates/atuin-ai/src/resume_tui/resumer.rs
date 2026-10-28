@@ -65,7 +65,7 @@ pub enum NotResumable {
     #[error(transparent)]
     Empty(#[from] continuation::NothingToContinue),
 
-    /// A continuation into a harness whose sessions atuin never writes.
+    /// A restore of, or a continuation into, a harness whose sessions atuin never writes.
     #[error("atuin can't write {0} sessions")]
     Unwritable(&'static str),
 
@@ -646,6 +646,10 @@ impl HarnessResumer {
                 (resume, Some(Copy { tip, dir }))
             }
             None => {
+                // No copy to resume as it is, and none can be written.
+                if !harness.writes_transcripts() {
+                    return Err(NotResumable::Unwritable(harness.name()));
+                }
                 let restore = resolve_cwd(session.cwd.as_deref(), &self.context);
                 target.cwd = Some(restore.cwd.clone());
                 // The transcript is only written once the user accepts the restore.

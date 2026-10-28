@@ -312,6 +312,18 @@ async fn a_copilot_copy_resumes_as_it_is_without_catching_up(dirs: Dirs) {
     assert!(machine.appended.lock().is_empty());
 }
 
+/// A Copilot session that isn't here can't be restored (atuin never writes Copilot's
+/// transcripts): planned as not resumable, not as a restore that would fail once accepted.
+#[rstest]
+#[tokio::test]
+async fn a_copilot_session_not_here_is_not_resumable(dirs: Dirs) {
+    let machine = FakeMachine::default();
+    let remote = row(HarnessKind::Copilot, "cp-2", &dirs.elsewhere, true);
+    let err = resumer(&dirs, &machine).plan(&remote).await.unwrap_err();
+    assert_eq!(err, NotResumable::Unwritable("copilot"));
+    assert!(machine.written.lock().is_empty());
+}
+
 /// Reading a copy can move it (a rollout Codex compressed, made plain again): a `{path}` template
 /// names where it is now.
 #[rstest]
