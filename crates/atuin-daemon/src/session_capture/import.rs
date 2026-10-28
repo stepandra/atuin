@@ -470,7 +470,11 @@ mod tests {
             .harness(HarnessKind::Copilot, sessions)
             .collect()
             .await;
-        assert_eq!(sum_new(&progress), 13, "the parent's rows, not the subagent's");
+        assert_eq!(
+            sum_new(&progress),
+            13 + 1,
+            "the parent's rows and its title, not the subagent's"
+        );
 
         let handle = HarnessSession {
             harness: HarnessKind::Copilot,

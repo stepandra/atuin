@@ -33,8 +33,13 @@
 //!
 //! **Titles.** No event names the session. Copilot generates a name at the first prompt and
 //! writes it to `workspace.yaml` (`name`, with `user_named` when `--name` or `/rename` set it,
-//! neither of which writes an event), which the reader stamps on the next message it reads after
-//! reading the sidecar, and again whenever the sidecar changes.
+//! neither of which writes an event). The reader checks the sidecar as each line of the log
+//! arrives, and yields the name as a row of its own (a system row with nothing but the title,
+//! timed by the sidecar's modification time) whenever it has changed, the first line of a read
+//! included: capture keys such a row on its content, so a re-read names the session again
+//! without a new row, and a rename is a row of its own however long after the last message it
+//! came. A rename after the log's last line (then `/exit`, which writes one) is picked up by
+//! the next line written.
 //!
 //! **Ids.** Every event has a `parentId`, the event before it, bookkeeping included: a chain
 //! through rows the reader skips. The rows are read in file order, so none names a parent.
@@ -302,10 +307,17 @@ impl CopilotSession {
                 if generation.replace(line.generation).is_some_and(|seen| seen != line.generation) {
                     reading = Reading::default();
                 }
-                let Some(mut message) = reading.absorb(event) else { continue };
+                let checkpoint = Checkpoint::after(&line).started_over(over);
+                if let Some(message) = reading.absorb(event) {
+                    yield Ok((checkpoint, message));
+                }
+                // After the line's own row: a crash between the two loses only the title row,
+                // which the next read names again.
                 let watch = Arc::clone(&sidecar);
-                message.title = self.pool.run(move || watch.lock().refresh()).await.ok().flatten();
-                yield Ok((Checkpoint::after(&line).started_over(over), message));
+                let renamed = self.pool.run(move || watch.lock().refresh()).await.ok().flatten();
+                if let Some((title, at)) = renamed {
+                    yield Ok((checkpoint, reading.title_row(title, at)));
+                }
             }
         }
     }
@@ -473,9 +485,30 @@ impl Reading {
             git_branch: self.git_branch.clone(),
             usage,
             title: None,
+            at: None,
+        }
+    }
+
+    /// A row carrying `title`, which the sidecar gave the session at `at` (see the module docs).
+    fn title_row(&self, title: TitleChange, at: Option<SystemTime>) -> CopilotMessage {
+        CopilotMessage {
+            event: Envelope {
+                kind: TITLE_ROW.to_owned(),
+                id: None,
+                timestamp: None,
+                data: serde_json::Value::Null,
+            },
+            cwd: self.cwd.clone(),
+            git_branch: self.git_branch.clone(),
+            usage: None,
+            title: Some(title),
+            at: at.map(OffsetDateTime::from),
         }
     }
 }
+
+/// The kind of the reader's own title rows, which no Copilot event has.
+const TITLE_ROW: &str = "atuin.title";
 
 /// A `session.usage_record`'s `usage` as [`Usage`] counts it: Copilot's `inputTokens` is the
 /// whole input, cached included, so the cached part is taken out of it.
@@ -552,9 +585,10 @@ impl SidecarWatch {
         }
     }
 
-    /// The title the sidecar now gives, when it changed since the last call (or on the first):
-    /// `None` when it hasn't, or the sidecar can't be read. Blocking.
-    fn refresh(&mut self) -> Option<TitleChange> {
+    /// The title the sidecar now gives, and when it was written, when the title changed since
+    /// the last call (or on the first): `None` when it hasn't, or the sidecar can't be read.
+    /// Blocking.
+    fn refresh(&mut self) -> Option<(TitleChange, Option<SystemTime>)> {
         let modified = std::fs::metadata(&self.path).and_then(|m| m.modified()).ok();
         if modified.is_some() && modified == self.modified {
             return None;
@@ -565,7 +599,7 @@ impl SidecarWatch {
             return None;
         }
         self.title = title;
-        self.title.clone()
+        self.title.clone().map(|title| (title, modified))
     }
 }
 
@@ -579,8 +613,10 @@ pub struct CopilotMessage {
     /// The model call's usage, on an `assistant.message`, from the `session.usage_record`
     /// before it.
     usage: Option<Usage>,
-    /// The session's name, on the first message read after the sidecar was read.
+    /// On a title row ([`TITLE_ROW`]), the session's name from the sidecar.
     title: Option<TitleChange>,
+    /// When a title row's sidecar was written: the row's time.
+    at: Option<OffsetDateTime>,
 }
 
 impl CopilotMessage {
@@ -657,13 +693,15 @@ impl Message for CopilotMessage {
             "user.message" => Role::User,
             "assistant.message" => Role::Assistant,
             "tool.execution_complete" => Role::Tool,
-            "session.compaction_complete" => Role::System,
+            "session.compaction_complete" | TITLE_ROW => Role::System,
             other => Role::Other(other.to_owned()),
         }
     }
 
     fn timestamp(&self) -> Option<OffsetDateTime> {
-        self.event.timestamp.as_deref().and_then(|s| OffsetDateTime::parse(s, &Rfc3339).ok())
+        self.at.or_else(|| {
+            self.event.timestamp.as_deref().and_then(|s| OffsetDateTime::parse(s, &Rfc3339).ok())
+        })
     }
 
     fn content(&self) -> Vec<Content> {
@@ -795,7 +833,7 @@ mod tests {
     }
 
     async fn read_all(root: &Path, id: &str) -> Vec<CopilotMessage> {
-        let path = root.join(id).join(EVENTS_FILE);
+        let path = root.join(id).joined(EVENTS_FILE);
         CopilotSession::open(SessionId::from(id.to_owned()), path, pool())
             .messages()
             .try_collect()
@@ -850,7 +888,7 @@ mod tests {
     #[rstest]
     fn locate_finds_the_log_by_id() {
         let root = root_with("abc", PROBE, None);
-        assert_eq!(locate(root.path(), "abc"), Some(root.path().join("abc").join(EVENTS_FILE)));
+        assert_eq!(locate(root.path(), "abc"), Some(root.path().join("abc").joined(EVENTS_FILE)));
         assert_eq!(locate(root.path(), "missing"), None);
         assert_eq!(locate(root.path(), "../abc"), None, "no path escapes the root");
     }
@@ -999,12 +1037,15 @@ mod tests {
     /// `/compact` leaves a summary standing in for the conversation before it, a system row;
     /// `/rename` writes no event, only the sidecar, which names the session with the user's
     /// title. The session resumed after both goes on in the same log.
+    #[rstest]
     #[tokio::test]
     async fn a_compaction_is_a_summary_and_a_rename_only_the_sidecar() {
         let root = root_with("s", COMPACTED, Some(COMPACTED_SIDECAR));
         let messages = read_all(root.path(), "s").await;
         let roles: Vec<_> = messages.iter().map(Message::role).collect();
         assert_eq!(roles, [
+            // The sidecar's name, with the log's first line.
+            Role::System,
             Role::User,
             Role::Assistant,
             Role::Tool,
@@ -1017,7 +1058,7 @@ mod tests {
             Role::Assistant,
         ]);
         assert_eq!(texts(&messages, &Role::User), ["What is this folder?", "Hi!"]);
-        let summary = &messages[7];
+        let summary = &messages[8];
         assert!(
             matches!(&summary.content()[..], [Content::Summary(text)] if text.starts_with("<overview>")),
             "{:?}",
@@ -1074,18 +1115,31 @@ mod tests {
         );
     }
 
+    /// The sidecar's name is a row of its own, read with the log's first line so the session is
+    /// named at once, and again only once the name changes; a rename after the last message is
+    /// a row the next line brings.
+    #[rstest]
     #[tokio::test]
-    async fn the_sidecars_name_is_stamped_on_the_first_message() {
+    async fn the_sidecars_name_is_a_row_of_its_own() {
         let root = root_with("s", TASK_AND_EDIT, Some(TASK_AND_EDIT_SIDECAR));
         let messages = read_all(root.path(), "s").await;
-        let titles: Vec<_> = messages.iter().filter_map(Message::title).collect();
-        assert_eq!(titles, [TitleChange::new(TitleSource::Named, "atuin-sample-edit")]);
-        assert!(
-            messages[0].title().is_some(),
-            "on the first message, so the session is named at once"
-        );
+        let title = &messages[0];
+        assert_eq!(title.role(), Role::System);
+        assert!(title.content().is_empty());
+        assert!(title.id().is_none(), "keyed on its content");
+        assert_eq!(title.title(), Some(TitleChange::new(TitleSource::Named, "atuin-sample-edit")));
+        assert!(title.timestamp().is_some());
+        assert_eq!(messages.iter().filter(|m| m.title().is_some()).count(), 1);
+        assert_eq!(messages.len(), parse(TASK_AND_EDIT).len() + 1);
+
+        let renamed = TASK_AND_EDIT_SIDECAR.replace("atuin-sample-edit", "renamed");
+        std::fs::write(root.path().join("s").joined(SIDECAR_FILE), renamed).unwrap();
+        let again = read_all(root.path(), "s").await;
+        let titles: Vec<_> = again.iter().filter_map(Message::title).collect();
+        assert_eq!(titles, [TitleChange::new(TitleSource::Named, "renamed")]);
     }
 
+    #[rstest]
     #[tokio::test]
     async fn a_missing_sidecar_names_nothing() {
         let root = root_with("s", PROBE, None);
@@ -1097,10 +1151,11 @@ mod tests {
     /// Resumed past a checkpoint, the reader still knows what the events before it said: the
     /// session's directory, which subagent interactions to skip, and the usage record a reply
     /// claims.
+    #[rstest]
     #[tokio::test]
     async fn resuming_from_a_checkpoint_keeps_the_state_before_it() {
         let root = root_with("s", TASK_AND_EDIT, None);
-        let path = root.path().join("s").join(EVENTS_FILE);
+        let path = root.path().join("s").joined(EVENTS_FILE);
         let session =
             || CopilotSession::open(SessionId::from("s".to_owned()), path.clone(), pool());
         let all: Vec<(Checkpoint, CopilotMessage)> =
@@ -1121,6 +1176,7 @@ mod tests {
         );
     }
 
+    #[rstest]
     #[tokio::test]
     async fn existing_lists_every_session_under_the_root() {
         let root = root_with("a", PROBE, None);
@@ -1128,7 +1184,7 @@ mod tests {
         std::fs::create_dir(&other).unwrap();
         std::fs::write(other.join(EVENTS_FILE), PROBE).unwrap();
         std::fs::create_dir(root.path().join(".session-operation-locks")).unwrap();
-        std::fs::write(root.path().join(".session-operation-locks").join("a.lock"), "").unwrap();
+        std::fs::write(root.path().join(".session-operation-locks").joined("a.lock"), "").unwrap();
         let sessions =
             CopilotSessions::builder().root(root.path().to_path_buf()).pool(pool()).build();
         let mut ids: Vec<String> = sessions
