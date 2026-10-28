@@ -13,43 +13,28 @@ pub static SINK: SinkStack = SinkStack::new();
 /// Sinks, the last one pushed and not yet dropped being current; [`Stderr`] when there are none.
 #[derive(Default)]
 pub struct SinkStack {
-    entries: Mutex<Entries>,
-}
-
-#[derive(Default)]
-struct Entries {
-    next_id: u64,
-    sinks: Vec<(u64, Arc<dyn Sink>)>,
+    sinks: Mutex<Vec<Arc<dyn Sink>>>,
 }
 
 impl SinkStack {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            entries: Mutex::new(Entries {
-                next_id: 0,
-                sinks: Vec::new(),
-            }),
+            sinks: Mutex::new(Vec::new()),
         }
     }
 
     /// Make `sink` the current one until the guard drops.
     pub fn push(&self, sink: impl Sink + 'static) -> SinkGuard<'_> {
-        let sink = Arc::new(sink);
-
-        let mut entries = self.entries.lock();
-        let id = entries.next_id;
-        entries.next_id += 1;
-        entries.sinks.push((id, sink));
-        drop(entries);
-
-        SinkGuard { stack: self, id }
+        let sink: Arc<dyn Sink> = Arc::new(sink);
+        self.sinks.lock().push(Arc::clone(&sink));
+        SinkGuard { stack: self, sink }
     }
 
     /// Show `message` on the current sink.
     pub fn show(&self, message: Message) {
         // Called outside the lock, so a sink stalled on a write never holds up a push or a drop.
-        let current = self.entries.lock().sinks.last().map(|(_, sink)| Arc::clone(sink));
+        let current = self.sinks.lock().last().cloned();
         match current {
             Some(sink) => sink.show(message),
             None => Stderr::default().show(message),
@@ -61,11 +46,12 @@ impl SinkStack {
 #[must_use = "the sink is removed as soon as the guard drops"]
 pub struct SinkGuard<'a> {
     stack: &'a SinkStack,
-    id: u64,
+    /// The entry to remove after the guard is dropped.
+    sink: Arc<dyn Sink>,
 }
 
 impl Drop for SinkGuard<'_> {
     fn drop(&mut self) {
-        self.stack.entries.lock().sinks.retain(|(id, _)| *id != self.id);
+        self.stack.sinks.lock().retain(|sink| !Arc::ptr_eq(sink, &self.sink));
     }
 }
