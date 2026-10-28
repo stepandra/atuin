@@ -10,7 +10,8 @@ pub use stderr::Stderr;
 
 /// A destination for messages the user must see, such as stderr or a TUI's status line.
 ///
-/// Only the binary picks the sink; library code never does.
+/// This trait must be implemented by anything that wants receive [`userio::log::info!`],
+/// [`userio::log::warn!`], and [`userio::log::error!`] messages.
 pub trait Sink: Send + Sync {
     /// Show `message` to the user.
     ///
@@ -28,8 +29,6 @@ pub struct Message {
 }
 
 /// How much a message matters to the user.
-///
-/// `Error` is the greatest, unlike [`tracing::Level`], which orders by verbosity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Severity {
     Info,
