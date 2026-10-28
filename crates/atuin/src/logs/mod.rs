@@ -1,6 +1,7 @@
 use std::io::IsTerminal;
 
 use atuin_common::logs::{FileConfig, LogConfig, StderrConfig};
+use atuin_common::userio::log::{SINK, USER, UserLayer};
 use tracing::Level;
 use tracing_appender::rolling::{self, RollingFileAppender, Rotation};
 use tracing_subscriber::filter::{self, EnvFilter};
@@ -60,7 +61,10 @@ impl LogCtx {
         // ATUIN_LOG env var overrides config file level settings
         let filter: EnvFilter = atuin_common::env::var("ATUIN_LOG")
             .map_or_else(|_| get_base_filter(config), |s| filter::Builder::default().parse_lossy(s))
-            .add_directive("sqlx_sqlite::regexp=off".parse().unwrap());
+            .add_directive("sqlx_sqlite::regexp=off".parse().unwrap())
+            // Messages for the user show on the sink alone, not twice on stderr nor in the log
+            // file: they carry what the user is shown, such as a login URL.
+            .add_directive(format!("{USER}=off").parse().unwrap());
 
         if let Some(file_config) = &config.file {
             clean_up_old_logs(file_config);
@@ -98,9 +102,11 @@ impl LogCtx {
             base.with(
                 config.stderr.as_ref().map(|c| stderr_layer::<_, fmt::time::SystemTime>(c, filter)),
             )
+            .with(UserLayer::new(&SINK))
             .try_init()?;
         } else {
             base.with(config.stderr.as_ref().map(|c| stderr_layer::<_, ()>(c, filter)))
+                .with(UserLayer::new(&SINK))
                 .try_init()?;
         }
 
@@ -110,6 +116,12 @@ impl LogCtx {
         }
 
         Ok(Self { _otel: otel })
+    }
+
+    /// Shows messages for the user and keeps no logs, for a command that must not pay for them.
+    pub fn without_logs() -> Result<Self, LogCtxEnableError> {
+        tracing_subscriber::registry().with(UserLayer::new(&SINK)).try_init()?;
+        Ok(Self { _otel: None })
     }
 }
 

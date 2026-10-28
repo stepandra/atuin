@@ -12,7 +12,8 @@
 //! # Implementation
 //!
 //! Under the hood, this is implemented through [`tracing`] and every wrapped here--[`info!`],
-//! [`warn!`], and [`error!`] in reality emit [`tracing`] events that custom layers handle.
+//! [`warn!`], and [`error!`] in reality emit [`tracing`] events that custom layers handle. A process
+//! shows them by adding a [`UserLayer`] to its subscriber.
 mod layer;
 mod sink;
 mod stack;

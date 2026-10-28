@@ -4,31 +4,35 @@ use std::fmt;
 
 use tracing::field::{Field, Visit};
 use tracing::{Event, Level, Subscriber};
+use tracing_subscriber::filter::{Filtered, LevelFilter, Targets};
 use tracing_subscriber::layer::{Context, Layer};
 
 use super::{Message, Severity, SinkStack, USER};
 
 /// Shows every [`USER`] event on the current sink of a [`SinkStack`].
+///
+/// Every subscriber needs one, and its other layers must leave [`USER`] events alone: a message
+/// shows on the sink, not in logs or traces.
 pub struct UserLayer {
     stack: &'static SinkStack,
 }
 
 impl UserLayer {
+    /// The layer for `stack`, with a filter of its own: it takes every [`USER`] event whatever the
+    /// subscriber's other filters drop, so the arguments of `info!`, `warn!` and `error!` always run,
+    /// and no other event.
+    ///
+    /// Add it last: a sink may log, and an event logged while another is dispatched clobbers the
+    /// per-layer filter state of the layers still to see the first one.
     #[must_use]
-    pub const fn new(stack: &'static SinkStack) -> Self {
-        Self { stack }
+    pub fn new<S: Subscriber>(stack: &'static SinkStack) -> Filtered<Self, Targets, S> {
+        Self { stack }.with_filter(Targets::new().with_target(USER, LevelFilter::INFO))
     }
 }
 
 impl<S: Subscriber> Layer<S> for UserLayer {
     fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
-        let metadata = event.metadata();
-
-        if metadata.target() != USER {
-            return;
-        }
-
-        let Some(severity) = Severity::from_level(*metadata.level()) else {
+        let Some(severity) = Severity::from_level(*event.metadata().level()) else {
             return;
         };
 

@@ -7,6 +7,7 @@ use atuin_client::settings::Settings;
 use atuin_client::theme;
 use atuin_common::logs::{self, LogConfig};
 use atuin_common::userio;
+use atuin_common::userio::log::{Nop, SINK};
 use clap::Subcommand;
 use clap_couture::Couture;
 use eyre::{Result, WrapErr};
@@ -263,13 +264,15 @@ impl Cmd {
             None
         };
 
+        // Before the settings load, so what loading them tells the user goes there too.
+        let sink = self.is_quiet().then(|| SINK.push(Nop));
+
         // Logging is set up from the settings, so what loading them logs waits for it.
         let (settings, held) = HeldEvents::hold(Settings::new);
         let settings = settings.wrap_err("could not load client settings")?;
         let logging = self
             .log_config(&settings)
-            .map(|c| LogCtx::try_enable("atuin", &c))
-            .transpose()
+            .map_or_else(LogCtx::without_logs, |config| LogCtx::try_enable("atuin", &config))
             .wrap_err("failed to enable logging")?;
         held.emit();
 
@@ -286,6 +289,7 @@ impl Cmd {
                 reason = "LogCtx has drop glue only with OTEL compiled in"
             )]
             drop(logging);
+            drop(sink);
             result
         }))
     }
@@ -419,6 +423,19 @@ impl Cmd {
 
             #[cfg(feature = "ai")]
             Self::Mcp(cmd) => cmd.run(&db, settings).await,
+        }
+    }
+
+    /// Whether the command keeps messages for the user off stderr: a shell hook stays quiet, and a
+    /// widget answers there.
+    fn is_quiet(&self) -> bool {
+        match self {
+            Self::History(cmd) => cmd.is_hook(),
+            Self::Search(cmd) => cmd.is_interactive(),
+            #[cfg(feature = "ai")]
+            Self::Ai(cmd) => cmd.is_widget(),
+            Self::Internal(_) => true,
+            _ => false,
         }
     }
 

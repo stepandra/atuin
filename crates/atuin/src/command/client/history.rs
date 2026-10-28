@@ -1232,17 +1232,15 @@ impl Cmd {
         }
     }
 
-    fn logs_enabled(&self) -> bool {
-        match self {
-            // Enable logs if not invoked from a shell hook. History commands invoked from shell
-            // hooks are performance-sensitive, so we want to skip any unnecessary initialization.
-            Self::Start { hook, .. } | Self::End { hook, .. } => !*hook,
-            _ => true,
-        }
+    /// Whether a shell hook ran the command.
+    pub const fn is_hook(&self) -> bool {
+        matches!(self, Self::Start { hook: true, .. } | Self::End { hook: true, .. })
     }
 
     pub fn log_config(&self) -> Option<LogConfig> {
-        self.logs_enabled().then(LogConfig::stderr_only)
+        // History commands invoked from shell hooks are performance-sensitive, so we want to skip
+        // any unnecessary initialization.
+        (!self.is_hook()).then(LogConfig::stderr_only)
     }
 }
 
