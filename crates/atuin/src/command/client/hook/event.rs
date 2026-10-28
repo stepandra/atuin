@@ -58,12 +58,15 @@ impl From<WireHookEvent> for Option<HookEvent> {
     ///   - Non-`Bash` tool invocations.
     ///   - Tool invocations which are missing a `tool_use_id`, unless the session and the
     ///     command can stand in for it ([`correlation_key`]).
+    ///   - Commands started in the background (Copilot's `mode: async`): their end says only
+    ///     that they started, so recording one would give it the wrong exit and duration.
     fn from(wire: WireHookEvent) -> Self {
         if matches!(wire.tool_name, WireToolName::Other) {
             return None;
         }
 
         let (command, intent) = match wire.tool_input {
+            Some(input) if input.is_background() => return None,
             Some(input) => (input.command, input.description),
             None => (None, None),
         };
@@ -311,15 +314,37 @@ mod tests {
         }),
         Some(HookEvent::End { tool_use_id: copilot_key("echo probe-hello; false"), exit: Some(1), transcript: None })
     )]
-    #[case::copilot_post_tool_use_without_a_trailer(
+    // A command Copilot started in the background (`mode: async`) is never recorded: its end
+    // comes when it starts. A real payload, Copilot CLI 1.0.104.
+    #[case::copilot_background_start_skipped(
+        json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "25e51fe0-710a-4dfe-973e-caf8e2629ad7",
+            "tool_name": "Bash",
+            "tool_input": {"command": "sleep 30; echo late", "description": "Background sleep then echo", "mode": "async"}
+        }),
+        None
+    )]
+    #[case::copilot_background_end_skipped(
         json!({
             "hook_event_name": "PostToolUse",
             "session_id": "25e51fe0-710a-4dfe-973e-caf8e2629ad7",
             "tool_name": "Bash",
-            "tool_input": {"command": "sleep 100"},
-            "tool_result": {"result_type": "success", "text_result_for_llm": "<shellId: 1 running in the background>"}
+            "tool_input": {"command": "sleep 30; echo late", "description": "Background sleep then echo", "mode": "async"},
+            "tool_result": {"result_type": "success", "text_result_for_llm": "<command started in background with shellId: 1>"}
         }),
-        Some(HookEvent::End { tool_use_id: copilot_key("sleep 100"), exit: None, transcript: None })
+        None
+    )]
+    // A failing command is a `PostToolUse` too, its exit code in the trailer alone.
+    #[case::copilot_failed_command(
+        json!({
+            "hook_event_name": "PostToolUse",
+            "session_id": "25e51fe0-710a-4dfe-973e-caf8e2629ad7",
+            "tool_name": "Bash",
+            "tool_input": {"command": "exit 3", "description": "Run exit 3"},
+            "tool_result": {"result_type": "success", "text_result_for_llm": "\n<shellId: 0 completed with exit code 3>"}
+        }),
+        Some(HookEvent::End { tool_use_id: copilot_key("exit 3"), exit: Some(3), transcript: None })
     )]
     // An empty tool_use_id is treated the same as missing.
     #[case::empty_tool_use_id_skipped(

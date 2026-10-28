@@ -76,6 +76,18 @@ pub struct WireToolInput {
     pub command: Option<NonNulStr>,
     #[serde(default)]
     pub description: Option<String>,
+    /// How Copilot runs the command: `async` for one started in the background, whose
+    /// `PostToolUse` comes as soon as it has started (`<command started in background with
+    /// shellId: 1>`), not when it finishes.
+    #[serde(default)]
+    pub mode: Option<String>,
+}
+
+impl WireToolInput {
+    /// Whether the command runs on in the background after the agent gets its result.
+    pub fn is_background(&self) -> bool {
+        self.mode.as_deref() == Some("async")
+    }
 }
 
 /// See [`WireHookEvent::tool_response`].
