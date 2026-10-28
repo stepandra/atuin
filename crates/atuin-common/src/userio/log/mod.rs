@@ -18,7 +18,7 @@ mod sink;
 mod stack;
 
 pub use layer::UserLayer;
-pub use sink::{Channel, Message, Nop, Severity, Sink, Stderr};
+pub use sink::{Message, Nop, Severity, Sink, Stderr};
 pub use stack::{SINK, SinkGuard, SinkStack};
 
 /// Target for messages meant for the user, as opposed to diagnostics.

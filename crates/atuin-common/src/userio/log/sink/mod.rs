@@ -1,10 +1,8 @@
 //! Where a message for the user ends up.
 
-mod channel;
 mod nop;
 mod stderr;
 
-pub use channel::Channel;
 pub use nop::Nop;
 pub use stderr::Stderr;
 
