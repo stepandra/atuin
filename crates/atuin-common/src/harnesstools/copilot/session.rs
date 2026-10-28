@@ -49,6 +49,7 @@
 //! **Ids.** Every event has a `parentId`, the event before it, bookkeeping included: a chain
 //! through rows the reader skips. The rows are read in file order, so none names a parent.
 
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read};
 use std::path::{Component, Path, PathBuf};
@@ -254,7 +255,10 @@ impl Listener for CopilotListener {
                 }
             };
             let (announce, mut announced) = mpsc::unbounded_channel::<CopilotSession>();
-            let mut reported = std::collections::HashSet::new();
+            // The children reported for each parent's current watch. A log removed and made
+            // again is reported again with a fresh watch, and so are its children then, each
+            // once more: their old watches ended with the old log.
+            let mut reported: HashMap<SessionId, HashSet<SessionId>> = HashMap::new();
             futures::pin_mut!(files);
             let mut files_done = false;
             loop {
@@ -264,6 +268,7 @@ impl Listener for CopilotListener {
                         Some(file) => {
                             let (path, stat) = file.into_parts();
                             let Some(id) = Self::session_id(&path) else { continue };
+                            reported.remove(&id);
                             yield Ok(CopilotSession {
                                 id,
                                 path: path.to_path_buf(),
@@ -277,7 +282,8 @@ impl Listener for CopilotListener {
                     },
                     child = announced.recv() => match child {
                         Some(child) => {
-                            if reported.insert(child.id.clone()) {
+                            let Some(parent) = child.parent_id() else { continue };
+                            if reported.entry(parent).or_default().insert(child.id.clone()) {
                                 yield Ok(child);
                             }
                         }
@@ -1292,10 +1298,11 @@ mod tests {
     /// The subagent's own conversation: the prompt its parent wrote, its reply calling `bash`,
     /// the result, and its answer, each row naming the parent session, with the agent's name
     /// as its title.
+    #[rstest]
     #[tokio::test]
     async fn a_subagent_is_a_child_session_over_the_same_log() {
         let root = root_with("s", TASK_AND_EDIT, Some(TASK_AND_EDIT_SIDECAR));
-        let path = root.path().join("s").join(EVENTS_FILE);
+        let path = root.path().join("s").joined(EVENTS_FILE);
         let parent = CopilotSession::open(SessionId::from("s".to_owned()), path, pool());
         let lane = Lane {
             call: TASK_CALL.to_owned(),
@@ -1325,7 +1332,11 @@ mod tests {
         );
         let parent_rows: Vec<CopilotMessage> = parent.messages().try_collect().await.unwrap();
         assert!(parent_rows.iter().all(|m| m.parent_session().is_none()));
-        assert_eq!(parent_rows.len() + messages.len(), parse_lane(TASK_AND_EDIT, None).len() + 4);
+        // The parent's rows and its title row, and the subagent's four.
+        assert_eq!(
+            parent_rows.len() + messages.len(),
+            parse_lane(TASK_AND_EDIT, None).len() + 1 + 4
+        );
     }
 
     /// A subagent's rows are told from the parent's by the call its replies name, or the
@@ -1349,6 +1360,7 @@ mod tests {
         assert!(lanes_in(Path::new("/no/such")).is_err());
     }
 
+    #[rstest]
     #[tokio::test]
     async fn existing_lists_subagents_after_their_parent() {
         let root = root_with("s", TASK_AND_EDIT, None);
@@ -1366,7 +1378,8 @@ mod tests {
 
     /// A parent's reader announces the subagents it comes across, the ones before its
     /// checkpoint included, and the listener reports each once.
-    #[tokio::test]
+    #[rstest]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn the_listener_reports_a_subagent_its_parent_comes_across() {
         let root = root_with("s", TASK_AND_EDIT, None);
         let sessions =
@@ -1386,13 +1399,34 @@ mod tests {
         assert_eq!(child.id().as_ref(), format!("agent-{TASK_CALL}"));
         assert_eq!(child.parent_id().unwrap().as_ref(), "s");
         // Read again, the parent announces it again; the listener does not report it twice.
-        let _: Vec<_> = parent.messages_from(None).take(3).try_collect().await.unwrap();
+        let _: Vec<_> = parent.clone().messages_from(None).take(3).try_collect().await.unwrap();
         assert!(
             tokio::time::timeout(std::time::Duration::from_millis(300), watched.next())
                 .await
                 .is_err(),
             "reported once"
         );
+
+        // The log removed and made again is a fresh watch: the parent is reported again, and
+        // once its reader announces the child, so is the child, whose old watch ended.
+        let path = root.path().join("s").joined(EVENTS_FILE);
+        let mut ended = parent.changes.clone().unwrap();
+        std::fs::remove_file(&path).unwrap();
+        while ended.changed().await.is_ok() {}
+        std::fs::write(&path, TASK_AND_EDIT).unwrap();
+        let again = tokio::time::timeout(std::time::Duration::from_secs(5), watched.next())
+            .await
+            .expect("the recreated log is reported")
+            .unwrap()
+            .unwrap();
+        assert_eq!(again.id().as_ref(), "s");
+        let _: Vec<_> = again.messages_from(None).take(3).try_collect().await.unwrap();
+        let child = tokio::time::timeout(std::time::Duration::from_secs(5), watched.next())
+            .await
+            .expect("the child is reported again")
+            .unwrap()
+            .unwrap();
+        assert_eq!(child.id().as_ref(), format!("agent-{TASK_CALL}"));
     }
 
     #[rstest]
