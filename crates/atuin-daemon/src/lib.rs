@@ -8,12 +8,14 @@ use atuin_client::record::sqlite_store::SqliteStore;
 use atuin_client::settings::Settings;
 use atuin_client::settings::watcher::global_settings_watcher;
 use atuin_common::sync::BlockingPool;
+use atuin_common::userio::log::SINK;
 use atuin_kv::database::Database as KvDatabase;
 use atuin_scripts::database::Database as ScriptsDatabase;
 use eyre::{Context, Result};
 
 use crate::grpc::ai::session::pb::ai_session_server::AiSessionServer;
 use crate::grpc::history::pb::history_server::HistoryServer;
+use crate::grpc::user_messages::pb::user_messages_server::UserMessagesServer;
 use crate::service::address::DaemonListener;
 use crate::session_capture::AiHarnessSessionCapture;
 
@@ -64,6 +66,10 @@ pub async fn boot(
     store: SqliteStore,
     history_db: HistoryDatabase,
 ) -> Result<()> {
+    // The daemon has no terminal: what it would tell the user goes to the clients following it.
+    let user_messages = grpc::UserMessagesService::default();
+    let _user_messages = SINK.push(user_messages.clone());
+
     // Create the components
     let search_component = SearchComponent::new();
     let blocking_pool = BlockingPool::new(MAX_BLOCKING_WORKERS);
@@ -213,6 +219,7 @@ pub async fn boot(
         history_service,
         search_service.build(handle.clone()),
         ai_session_service,
+        UserMessagesServer::new(user_messages),
         handle,
     )?;
 

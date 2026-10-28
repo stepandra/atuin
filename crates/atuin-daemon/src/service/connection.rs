@@ -2,10 +2,12 @@ use std::ops::ControlFlow;
 use std::time::Duration;
 
 use atuin_common::futures::Backoff;
+use atuin_common::userio::log::SinkStack;
 use tonic::Code;
 use tonic::transport::Channel;
 
 use crate::HistoryClient;
+use crate::client::UserMessages;
 use crate::grpc::versioning::VersionMatchError;
 use crate::service::address::{ConnectError, DaemonAddress};
 use crate::service::backend::{BackendError, SpawnError};
@@ -103,6 +105,14 @@ impl Connection {
     /// A client of the service's history API, over this connection.
     pub fn history_client(&self) -> HistoryClient {
         HistoryClient::from(self.channel.clone())
+    }
+
+    /// Starts showing on `stack` what the service tells the user, over this connection.
+    pub async fn user_messages(
+        &self,
+        stack: &'static SinkStack,
+    ) -> Result<UserMessages, tonic::Status> {
+        UserMessages::follow(self.channel.clone(), stack).await
     }
 
     /// Ask the service to shut down, without waiting for it to.

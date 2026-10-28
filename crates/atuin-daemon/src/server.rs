@@ -5,6 +5,7 @@ use crate::daemon::DaemonHandle;
 use crate::grpc;
 use crate::grpc::ai::session::pb::ai_session_server::AiSessionServer;
 use crate::grpc::history::pb::history_server::HistoryServer;
+use crate::grpc::user_messages::pb::user_messages_server::UserMessagesServer;
 use crate::grpc::versioning::StrictVersionLayer;
 use crate::search::search_server::SearchServer;
 use crate::service::address::DaemonListener;
@@ -23,6 +24,7 @@ pub fn run_grpc_server(
     history_service: HistoryServer<grpc::HistoryService>,
     search_service: SearchServer<SearchGrpcService>,
     ai_session_service: AiSessionServer<grpc::AiSessionService>,
+    user_messages_service: UserMessagesServer<grpc::UserMessagesService>,
     handle: DaemonHandle,
 ) -> Result<()> {
     use tonic::transport::Server;
@@ -51,6 +53,7 @@ pub fn run_grpc_server(
             .add_service(history_service)
             .add_service(search_service)
             .add_service(ai_session_service)
+            .add_service(user_messages_service)
             .serve_with_incoming_shutdown(incoming, shutdown_signal)
             .await
         {

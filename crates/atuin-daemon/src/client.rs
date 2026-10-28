@@ -6,11 +6,14 @@ use atuin_client::history::{History, HistoryId};
 use atuin_client::settings::{FilterMode, Settings};
 use atuin_common::filter::{self, OrFilter};
 use atuin_common::range::PyStyleIdxRange;
+use atuin_common::userio::log::{Message, SinkStack};
 use easy_cast::Conv;
 use eyre::Result;
 use futures::{Stream, StreamExt};
 use itertools::Itertools;
 use time::OffsetDateTime;
+use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 use tonic::Code;
 use tonic::service::interceptor::InterceptedService;
 use tonic::transport::Channel;
@@ -23,6 +26,7 @@ use crate::grpc::ai::session::pb::{
     ListSessionsRequest, ProjectSyncedRequest, RebuildSessionsRequest, SearchSessionsMatch,
     SearchSessionsRequest, TailSessionsEvent, TailSessionsRequest,
 };
+use crate::grpc::common::pb::Lagged;
 use crate::grpc::history::pb::history_client::HistoryClient as HistoryServiceClient;
 use crate::grpc::history::pb::{
     AuthorKind, CancelHistoryReply, CancelHistoryRequest, CommandCapture, CommandCaptureMeta,
@@ -32,6 +36,8 @@ use crate::grpc::history::pb::{
     StartHistoryReply, StartHistoryRequest, StatusReply, StatusRequest, TailHistoryReply,
     TailHistoryRequest,
 };
+use crate::grpc::user_messages::pb::user_messages_client::UserMessagesClient as UserMessagesServiceClient;
+use crate::grpc::user_messages::pb::{FollowReplyEvent, FollowRequest};
 use crate::grpc::versioning::{StrictVersionInterceptor, VersionMatchError, VersionedExt as _};
 use crate::output_capture::OutputMatch;
 use crate::search::search_client::SearchClient as SearchServiceClient;
@@ -553,6 +559,58 @@ impl AiClient {
             harness: harness.map(|h| h as i32),
         };
         Ok(self.client.import_sessions(request).await?.into_inner())
+    }
+}
+
+/// Shows on a [`SinkStack`] what the daemon tells the user, from [`follow`](Self::follow) until
+/// [`finish`](Self::finish).
+pub struct UserMessages {
+    /// Dropped to close this side of the stream, which has the daemon send the messages it has
+    /// left and end it.
+    close: oneshot::Sender<()>,
+    shown: JoinHandle<()>,
+}
+
+impl UserMessages {
+    /// Follows the daemon over `channel`, showing on `stack` every message it shows from when this
+    /// returns on.
+    pub async fn follow(
+        channel: Channel,
+        stack: &'static SinkStack,
+    ) -> Result<Self, tonic::Status> {
+        let (close, closed) = oneshot::channel::<()>();
+        let requests =
+            futures::stream::once(closed).filter_map(|_| std::future::ready(None::<FollowRequest>));
+        let mut replies =
+            UserMessagesServiceClient::with_interceptor(channel, StrictVersionInterceptor)
+                .follow(requests)
+                .await?
+                .into_inner();
+
+        // Runs until the daemon ends the stream, which dropping `close` asks for.
+        let shown = tokio::spawn(async move {
+            while let Ok(Some(reply)) = replies.message().await {
+                match reply.event {
+                    Some(FollowReplyEvent::Message(message)) => match Message::try_from(message) {
+                        Ok(message) => stack.show(message),
+                        Err(err) => warn!(?err, "dropped a message from the daemon"),
+                    },
+                    Some(FollowReplyEvent::Lagged(Lagged { dropped })) => {
+                        warn!(dropped, "missed messages from the daemon");
+                    }
+                    None => {}
+                }
+            }
+        });
+
+        Ok(Self { close, shown })
+    }
+
+    /// Shows the messages the daemon has shown until now, then stops following it.
+    pub async fn finish(self) {
+        drop(self.close);
+        // One that panicked has shown what it could.
+        let _ = self.shown.await;
     }
 }
 

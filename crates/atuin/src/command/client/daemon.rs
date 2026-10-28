@@ -117,14 +117,14 @@ pub async fn ready_client(settings: &Settings) -> Result<HistoryClient> {
     Ok(ActiveService::ready(settings).await?.into_client())
 }
 
-/// Send a request to the daemon, first ensuring (via [`ready_client`]) that it is running and is
-/// our build.
+/// Send a request to the daemon, first ensuring (as [`ready_client`] does) that it is running and
+/// is our build, and show here what the daemon tells the user meanwhile.
 async fn try_with_restart<F, R>(settings: &Settings, send_request: F) -> Result<R>
 where
     F: AsyncFnOnce(&mut HistoryClient) -> Result<R> + Sync,
 {
-    let mut client = ready_client(settings).await?;
-    send_request(&mut client).await
+    let service = ActiveService::ready(settings).await?;
+    service.following(async { send_request(&mut service.history_client()).await }).await
 }
 
 /// Send a request to an already-running daemon of our build.
@@ -151,7 +151,9 @@ where
 const START_HISTORY_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub async fn start_history(settings: &Settings, history: History) -> Result<HistoryId> {
-    let start = try_with_restart(settings, async |client| client.start_history(history).await);
+    // Not through `try_with_restart`: the shell hook keeps quiet, so it has no use for the daemon's
+    // messages.
+    let start = async { ready_client(settings).await?.start_history(history).await };
     let resp = tokio::time::timeout(START_HISTORY_TIMEOUT, start)
         .await
         .wrap_err("timed out waiting for the daemon")??;
@@ -186,12 +188,12 @@ pub async fn rebuild_history(settings: &Settings) -> Result<()> {
 }
 
 /// Have the daemon rebuild its AI sessions from the record store (see
-/// `AiClient::rebuild_sessions`), first starting or replacing it (via [`ready_client`]) as the
-/// other AI session commands do.
+/// `AiClient::rebuild_sessions`), first starting or replacing it as the other AI session commands
+/// do, and show here what it tells the user meanwhile.
 pub async fn rebuild_ai_sessions(settings: &Settings) -> Result<()> {
-    ready_client(settings).await?;
+    let service = ActiveService::ready(settings).await?;
     let mut client = atuin_daemon::AiClient::from_settings(settings).await?;
-    client.rebuild_sessions().await
+    service.following(client.rebuild_sessions()).await
 }
 
 /// How long to look for a running daemon to project synced AI sessions: a stopped daemon's socket
@@ -216,7 +218,8 @@ pub async fn project_synced_ai_sessions(settings: &Settings) -> Result<()> {
         return Ok(());
     }
     let mut client = atuin_daemon::AiClient::from_settings(settings).await?;
-    match tokio::time::timeout(PROJECT_SYNCED_WAIT, client.project_synced()).await {
+    let projected = tokio::time::timeout(PROJECT_SYNCED_WAIT, client.project_synced());
+    match service.following(projected).await {
         Ok(Err(err)) if is_legacy_daemon_error(&err) => Ok(()),
         Ok(projected) => projected,
         Err(_) => {

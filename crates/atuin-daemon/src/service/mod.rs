@@ -16,6 +16,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use atuin_client::settings::{Daemon as DaemonSettings, Settings};
+use atuin_common::userio::log::SINK;
 pub use backend::{DaemonizeError, SpawnError, StopError, Subproc};
 pub use claim::{ClaimError, ServiceClaim};
 pub use connection::FindError;
@@ -240,6 +241,24 @@ impl ActiveService {
     #[must_use]
     pub fn into_client(self) -> HistoryClient {
         self.connection.history_client()
+    }
+
+    /// A client of the service's history API.
+    #[must_use]
+    pub fn history_client(&self) -> HistoryClient {
+        self.connection.history_client()
+    }
+
+    /// Runs `request`, showing on this process's [`SINK`] what the service tells the user
+    /// meanwhile. A service that can't stream its messages still runs `request`.
+    pub async fn following<R>(&self, request: impl Future<Output = R>) -> R {
+        let messages = self.connection.user_messages(&SINK).await;
+        let result = request.await;
+        match messages {
+            Ok(messages) => messages.finish().await,
+            Err(status) => tracing::debug!(?status, "not following the daemon's messages"),
+        }
+        result
     }
 
     /// Where the service listens.
