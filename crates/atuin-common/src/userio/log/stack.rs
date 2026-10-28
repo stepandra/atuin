@@ -1,5 +1,4 @@
-//! A stack of sinks, where the top-most [`userio::log::sink::Sink`] is the one that receives
-//! messages.
+//! A stack of sinks, where the top-most [`Sink`] is the one that receives messages.
 
 use std::sync::Arc;
 

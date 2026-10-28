@@ -10,13 +10,14 @@ pub use stderr::Stderr;
 
 /// A destination for messages the user must see, such as stderr or a TUI's status line.
 ///
-/// This trait must be implemented by anything that wants receive [`userio::log::info!`],
-/// [`userio::log::warn!`], and [`userio::log::error!`] messages.
+/// This trait must be implemented by anything that wants to receive
+/// [`userio::log::info!`](super::info!), [`userio::log::warn!`](super::warn!), and
+/// [`userio::log::error!`](super::error!) messages.
 pub trait Sink: Send + Sync {
     /// Show `message` to the user.
     ///
-    /// Guarantees that the message diplay do not interleave and is displayed in the same order as
-    /// it was invoked in.
+    /// Guarantees that the message display does not interleave and is displayed in the same order
+    /// as it was invoked in.
     fn show(&self, message: Message);
 }
 
