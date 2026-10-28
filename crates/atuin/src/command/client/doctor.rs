@@ -320,8 +320,9 @@ impl SettingPaths {
             };
             if path.as_path().is_dangling_symlink() {
                 userio::log::warn!(
-                    "{} (${path_env_var}) is a broken symlink. This may cause issues with Atuin",
-                    path.display()
+                    "doctor-broken-symlink",
+                    path = path.display().to_string(),
+                    env_var = path_env_var
                 );
             }
         }
@@ -393,50 +394,45 @@ impl DoctorDump {
 fn checks(info: &DoctorDump, settings: &Settings) {
     println!(); // spacing
     //
-    let zfs_error = "[Filesystem] ZFS is known to have some issues with SQLite. Atuin uses SQLite heavily. If you are having poor performance, there are some workarounds here: https://github.com/atuinsh/atuin/issues/952";
-    let bash_plugin_error = format!(
-        "[Shell] If you are using Bash, Atuin requires that either bash-preexec or ble.sh (>= \
-         0.4) be installed. An older ble.sh may not be detected. so ignore this if you have \
-         ble.sh >= 0.4 set up! Read more here: {}",
-        atuin_common::docs::url("guide/installation/#installing-the-shell-plugin")
-    );
-    let blesh_integration_error = "[Shell] Atuin and ble.sh seem to be loaded in the session, but \
-                                   the integration does not seem to be working. Please check the \
-                                   setup in .bashrc.";
-    let openbsd_warning = "[System] OpenBSD is not officially supported.";
-
     if cfg!(target_os = "openbsd") {
-        userio::log::warn!("{openbsd_warning}");
+        userio::log::warn!("doctor-openbsd");
     }
 
     // ZFS: https://github.com/atuinsh/atuin/issues/952
     if info.system.disks.iter().any(|d| d.filesystem == "zfs") {
-        userio::log::warn!("{zfs_error}");
+        userio::log::warn!("doctor-zfs");
     }
 
     info.atuin.setting_paths.verify();
 
     if let Some(legacy) = atuin_common::dirs::shadowed_legacy_config() {
         let active = atuin_common::dirs::config_path("config.toml");
-        let warning = super::info::shadowed_config_warning(&legacy, &active);
-        userio::log::warn!("[Config] {warning}.");
+        userio::log::warn!(
+            "doctor-shadowed-config",
+            warning = super::info::shadowed_config_warning(&legacy, &active)
+        );
     }
     if let Some(legacy) = atuin_common::dirs::shadowed_legacy_data_dir(&settings.data_dir) {
-        let warning = super::info::shadowed_data_dir_warning(&legacy, &settings.data_dir);
-        userio::log::warn!("[Data] {warning}.");
+        userio::log::warn!(
+            "doctor-shadowed-data-dir",
+            warning = super::info::shadowed_data_dir_warning(&legacy, &settings.data_dir)
+        );
     }
 
     // Shell
     if info.shell.name == "bash" {
         if !info.shell.plugins.iter().any(|p| p == "blesh" || p == "bash-preexec") {
-            userio::log::warn!("{bash_plugin_error}");
+            userio::log::warn!(
+                "doctor-bash-plugin",
+                url = atuin_common::docs::url("guide/installation/#installing-the-shell-plugin")
+            );
         }
 
         if info.shell.plugins.iter().any(|plugin| plugin == "atuin")
             && info.shell.plugins.iter().any(|plugin| plugin == "blesh")
             && info.shell.preexec.as_ref().is_some_and(|val| val == "none")
         {
-            userio::log::warn!("{blesh_integration_error}");
+            userio::log::warn!("doctor-blesh-integration");
         }
     }
 }

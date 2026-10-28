@@ -237,8 +237,9 @@ pub fn ensure_version(response: &Response) -> Result<bool> {
     // If the client is newer than the server
     if version.major < ATUIN_VERSION.major {
         userio::log::warn!(
-            "version mismatch: to sync, the server needs to run a newer version of Atuin (client: \
-             {ATUIN_CARGO_VERSION}, server: {version})"
+            "sync-version-mismatch",
+            client = ATUIN_CARGO_VERSION,
+            server = version.to_string()
         );
 
         return Ok(false);

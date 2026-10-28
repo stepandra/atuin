@@ -10,15 +10,15 @@ pub struct Purge {}
 
 impl Purge {
     pub async fn run(&self, settings: &Settings, store: SqliteStore) -> Result<()> {
-        userio::log::localized::info!("store-purge-start");
+        userio::log::info!("store-purge-start");
 
         let key = paseto_v4::Key::try_load_from_path(&settings.key_path)
             .context("could not load encryption key")?;
 
         match store.purge(&key).await {
-            Ok(()) => userio::log::localized::info!("store-purge-done"),
+            Ok(()) => userio::log::info!("store-purge-done"),
             Err(e) => {
-                userio::log::localized::error!("store-purge-failed", error = format!("{e:#}"));
+                userio::log::error!("store-purge-failed", error = format!("{e:#}"));
             }
         }
         // Even a failed purge may have deleted some records, which a replay would not take out

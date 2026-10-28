@@ -76,10 +76,7 @@ impl Importer for Bash {
                 LineType::Empty => {}                // do nothing
                 LineType::Timestamp(t) => {
                     if t < next_timestamp {
-                        userio::log::warn!(
-                            "time reversal detected in Bash history; commands may be ordered \
-                             incorrectly"
-                        );
+                        userio::log::warn!("import-bash-time-reversal");
                     }
                     next_timestamp = t;
                 }

@@ -66,7 +66,7 @@ async fn create(db: &dyn DynDatabase, username: NewUsername, email: String) -> R
         .await
         .wrap_err_with(|| format!("failed to create {}", user.username))?;
 
-    userio::log::info!("created {}", user.username);
+    userio::log::info!("server-admin-user-created", username = user.username.to_string());
     Ok(())
 }
 
@@ -75,7 +75,7 @@ async fn set_password(db: &dyn DynDatabase, username: &str) -> Result<()> {
     user.password = HashedPassword::new(read_password()?).await;
     db.update_user_password(&user).await.wrap_err("failed to update the password")?;
 
-    userio::log::info!("changed the password of {username}");
+    userio::log::info!("server-admin-password-changed", username = username);
     Ok(())
 }
 
@@ -86,7 +86,7 @@ async fn delete(db: &dyn DynDatabase, username: &str, yes: bool) -> Result<()> {
     }
     db.delete_user(&user).await.wrap_err("failed to delete the user")?;
 
-    userio::log::info!("deleted {username}");
+    userio::log::info!("server-admin-user-deleted", username = username);
     Ok(())
 }
 

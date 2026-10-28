@@ -77,30 +77,27 @@ async fn install(agent_name: &str) -> Result<()> {
     match harness.install_hooks().await {
         Ok(path) => {
             userio::log::info!(
-                "Atuin hooks installed for {}. Path: {}",
-                harness.name(),
-                path.display()
+                "hook-installed",
+                harness = harness.name(),
+                path = path.display().to_string()
             );
             if harness.name() == "codex" {
                 // Codex runs only the hooks the user trusted (see `codex::hook_trust`).
                 let config = path.with_file_name("config.toml");
-                userio::log::info!("Trusted them in Codex's config: {}", config.display());
+                userio::log::info!("hook-codex-trusted", config = config.display().to_string());
             }
             if let Some(hint) = reload_hint(harness.name()) {
-                userio::log::info!("{hint}");
+                userio::log::info!("hook-reload-hint", hint = hint);
             }
         }
         Err(InstallHookError::AlreadyInstalled) => {
-            userio::log::info!("{}: hooks already installed, skipping", harness.name());
+            userio::log::info!("hook-already-installed", harness = harness.name());
         }
         Err(err) => return Err(err.into()),
     }
 
     if cfg!(feature = "ai") {
-        let name = harness.name();
-        userio::log::info!(
-            "To let {name} search your history too, run `atuin mcp install {name}`."
-        );
+        userio::log::info!("hook-mcp-hint", name = harness.name());
     }
 
     Ok(())

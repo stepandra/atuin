@@ -54,6 +54,8 @@ fs-err = { workspace = true }
 futures = { workspace = true }
 getrandom = { workspace = true }
 humantime = { workspace = true }
+i18n-embed = { workspace = true }
+i18n-embed-fl = { workspace = true }
 itertools = { workspace = true }
 libsqlite3-sys = { workspace = true, optional = true }
 memchr = { workspace = true }
@@ -65,6 +67,7 @@ prost = { workspace = true, optional = true }
 ref-cast = { workspace = true }
 regex = { workspace = true }
 rmp = { workspace = true }
+rust-embed = { workspace = true }
 schemars = { workspace = true }
 rusty_paserk = { workspace = true }
 rusty_paseto = { workspace = true }

@@ -80,15 +80,12 @@ async fn install_all() -> Result<()> {
 
 async fn install(harness: AnyHarness) -> Result<()> {
     mcp::install(harness).await?;
-    userio::log::info!("Restart {} to load it.", harness.name());
+    userio::log::info!("mcp-restart-harness", harness = harness.name());
     Ok(())
 }
 
 fn print_capture_tip() {
-    userio::log::info!(
-        "To let agents search command output and agent threads too, run `atuin config enable \
-         output-capture` and `atuin config enable threads`."
-    );
+    userio::log::info!("mcp-capture-tip");
 }
 
 #[cfg(test)]

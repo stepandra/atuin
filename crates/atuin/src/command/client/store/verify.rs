@@ -10,14 +10,14 @@ pub struct Verify {}
 
 impl Verify {
     pub async fn run(&self, settings: &Settings, store: SqliteStore) -> Result<()> {
-        userio::log::info!("Verifying local store can be decrypted with the current key");
+        userio::log::info!("store-verify-start");
 
         let key = paseto_v4::Key::try_load_from_path(&settings.key_path)
             .context("could not load encryption key")?;
 
         match store.verify(&key).await {
-            Ok(()) => userio::log::info!("Local store encryption verified OK"),
-            Err(e) => userio::log::error!("failed to verify local store encryption: {e:#}"),
+            Ok(()) => userio::log::info!("store-verify-done"),
+            Err(e) => userio::log::error!("store-verify-failed", error = format!("{e:#}")),
         }
 
         Ok(())

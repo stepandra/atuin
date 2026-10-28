@@ -50,7 +50,7 @@ impl Cmd {
         meta.delete_session().await?;
         meta.delete_hub_session().await?;
 
-        userio::log::info!("{}", fl!("delete-success"));
+        userio::log::info!("delete-success");
 
         Ok(())
     }

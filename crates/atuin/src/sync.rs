@@ -41,11 +41,11 @@ pub async fn build(
     // A failure in one store should not stop the others from building - build as much as
     // possible, and warn about the rest.
     if let Err(e) = history_store.build_all(db, downloaded).await {
-        userio::log::warn!("failed to build history: {e}");
+        userio::log::warn!("sync-build-history-failed", error = e.to_string());
     }
 
     if let Err(e) = kv_store.build().await {
-        userio::log::warn!("failed to build kv: {e}");
+        userio::log::warn!("sync-build-kv-failed", error = e.to_string());
     }
 
     let script_db = atuin_scripts::database::Database::new(
@@ -55,7 +55,7 @@ pub async fn build(
     .await?;
 
     if let Err(e) = script_store.build(&script_db).await {
-        userio::log::warn!("failed to build scripts: {e}");
+        userio::log::warn!("sync-build-scripts-failed", error = e.to_string());
     }
 
     Ok(())

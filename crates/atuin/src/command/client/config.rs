@@ -292,7 +292,7 @@ impl EnableCmd {
         let octavo = match self.feature {
             Feature::Octavo => {
                 let Some(onboarding) = onboard_octavo(settings).await? else {
-                    userio::log::info!("{}", fl!("config-enable-octavo-declined"));
+                    userio::log::info!("config-enable-octavo-declined");
                     return Ok(());
                 };
                 Some(onboarding)
@@ -306,7 +306,7 @@ impl EnableCmd {
         let updated = self.get_updated_config(&config_str, settings.daemon.enabled)?;
         tokio::fs::write(&config_file, &updated).await?;
 
-        userio::log::info!("Enabled.");
+        userio::log::info!("config-enabled");
 
         // Queued before the restart below so the daemon starts on it, and reported after it so a
         // failure still leaves the daemon on the new config.
@@ -329,26 +329,19 @@ impl EnableCmd {
             let settings = match Settings::new() {
                 Ok(settings) => settings,
                 Err(e) => {
-                    userio::log::warn!(
-                        "could not read the new config to restart the Atuin daemon: {e}; run \
-                         `atuin daemon restart` manually"
-                    );
+                    userio::log::warn!("config-reload-failed", error = e.to_string());
                     return backfilled;
                 }
             };
             if settings.daemon.enabled && !settings.daemon.autostart {
-                userio::log::info!(
-                    "Restart the Atuin daemon and your shell for the change to take effect."
-                );
+                userio::log::info!("config-restart-daemon-and-shell");
                 return backfilled;
             } else if let Err(e) = daemon::restart_cmd(&settings, false).await {
-                userio::log::warn!(
-                    "could not restart the Atuin daemon: {e}; run `atuin daemon restart` manually"
-                );
+                userio::log::warn!("config-daemon-restart-failed", error = e.to_string());
             }
         }
 
-        userio::log::info!("Restart your shell for the change to take effect.");
+        userio::log::info!("config-restart-shell");
 
         backfilled
     }
@@ -404,10 +397,10 @@ impl OctavoOnboarding {
                 "failed to queue your history for upload; run `atuin config enable octavo` again \
                  to retry",
             )?;
-            userio::log::info!("{}", fl!("config-enable-octavo-backfilled", count = queued));
+            userio::log::info!("config-enable-octavo-backfilled", count = queued);
         }
         if self.old > 0 {
-            userio::log::info!("{}", fl!("config-enable-octavo-backfill-old", count = self.old));
+            userio::log::info!("config-enable-octavo-backfill-old", count = self.old);
         }
 
         Ok(())
@@ -482,20 +475,18 @@ impl DisableCmd {
         let updated = self.get_updated_config(&config_str)?;
         tokio::fs::write(&config_file, &updated).await?;
 
-        userio::log::info!("Disabled.");
+        userio::log::info!("config-disabled");
 
         #[cfg(feature = "daemon")]
         match self.feature {
             Feature::Daemon => {
                 if let Err(e) = daemon::stop_cmd(settings).await {
-                    userio::log::warn!(
-                        "could not stop the Atuin daemon: {e}; run `atuin daemon stop` manually"
-                    );
+                    userio::log::warn!("config-daemon-stop-failed", error = e.to_string());
                     return Ok(());
                 }
                 // Only stopped, the launchd agent would start again at the next login.
                 if let Err(e) = atuin_daemon::service::ActiveService::remove_launchd_agent().await {
-                    userio::log::warn!("could not remove the Atuin daemon's launchd agent: {e}");
+                    userio::log::warn!("config-launchd-agent-remove-failed", error = e.to_string());
                 }
             }
             Feature::OutputCapture => restart_autostarted_daemon(settings).await,
@@ -506,7 +497,7 @@ impl DisableCmd {
             Feature::Threads => return Ok(()),
         }
 
-        userio::log::info!("Restart your shell for the change to take effect.");
+        userio::log::info!("config-restart-shell");
 
         Ok(())
     }
@@ -544,9 +535,7 @@ async fn restart_autostarted_daemon(settings: &Settings) {
         && settings.daemon.autostart
         && let Err(e) = daemon::restart_cmd(settings, true).await
     {
-        userio::log::warn!(
-            "could not restart the Atuin daemon: {e}; run `atuin daemon restart` manually"
-        );
+        userio::log::warn!("config-daemon-restart-failed", error = e.to_string());
     }
 }
 

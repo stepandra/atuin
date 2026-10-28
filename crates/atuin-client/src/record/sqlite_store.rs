@@ -682,7 +682,10 @@ impl SqliteStore {
             match record.clone().decrypt(key) {
                 Ok(_) => {}
                 Err(_) => {
-                    userio::log::info!("Failed to decrypt {}, deleting", record.id.as_hyphenated());
+                    userio::log::info!(
+                        "record-store-decrypt-failed",
+                        id = record.id.as_hyphenated().to_string()
+                    );
 
                     self.delete(record.id).await?;
                 }

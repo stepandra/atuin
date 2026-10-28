@@ -170,11 +170,11 @@ pub async fn execute_script_interactive(
     tokio::spawn(async move {
         while let Some(input) = stdin_rx.recv().await {
             if let Err(e) = stdin.write_all(input.as_bytes()).await {
-                userio::log::error!("failed to write to stdin: {e}");
+                userio::log::error!("scripts-stdin-write-failed", error = e.to_string());
                 break;
             }
             if let Err(e) = stdin.flush().await {
-                userio::log::error!("failed to flush stdin: {e}");
+                userio::log::error!("scripts-stdin-flush-failed", error = e.to_string());
                 break;
             }
         }
@@ -193,16 +193,16 @@ pub async fn execute_script_interactive(
                 Ok(0) => break, // End of stdout
                 Ok(n) => {
                     if let Err(e) = stdout_writer.write_all(&buffer[0..n]).await {
-                        userio::log::error!("failed to write to stdout: {e}");
+                        userio::log::error!("scripts-stdout-write-failed", error = e.to_string());
                         break;
                     }
                     if let Err(e) = stdout_writer.flush().await {
-                        userio::log::error!("failed to flush stdout: {e}");
+                        userio::log::error!("scripts-stdout-flush-failed", error = e.to_string());
                         break;
                     }
                 }
                 Err(e) => {
-                    userio::log::error!("failed to read from process stdout: {e}");
+                    userio::log::error!("scripts-stdout-read-failed", error = e.to_string());
                     break;
                 }
             }
@@ -221,16 +221,16 @@ pub async fn execute_script_interactive(
                 Ok(0) => break, // End of stderr
                 Ok(n) => {
                     if let Err(e) = stderr_writer.write_all(&buffer[0..n]).await {
-                        userio::log::error!("failed to write to stderr: {e}");
+                        userio::log::error!("scripts-stderr-write-failed", error = e.to_string());
                         break;
                     }
                     if let Err(e) = stderr_writer.flush().await {
-                        userio::log::error!("failed to flush stderr: {e}");
+                        userio::log::error!("scripts-stderr-flush-failed", error = e.to_string());
                         break;
                     }
                 }
                 Err(e) => {
-                    userio::log::error!("failed to read from process stderr: {e}");
+                    userio::log::error!("scripts-stderr-read-failed", error = e.to_string());
                     break;
                 }
             }
@@ -250,7 +250,7 @@ pub async fn execute_script_interactive(
                 status
             }
             Err(e) => {
-                userio::log::error!("failed to wait for child process: {e}");
+                userio::log::error!("scripts-wait-failed", error = e.to_string());
                 // Send a default error code
                 let _ = exit_code_tx.send(-1).await;
                 return;
@@ -259,11 +259,11 @@ pub async fn execute_script_interactive(
 
         // Wait for stdout/stderr tasks to complete
         if let Err(e) = stdout_handle.await {
-            userio::log::error!("failed to join stdout task: {e}");
+            userio::log::error!("scripts-stdout-join-failed", error = e.to_string());
         }
 
         if let Err(e) = stderr_handle.await {
-            userio::log::error!("failed to join stderr task: {e}");
+            userio::log::error!("scripts-stderr-join-failed", error = e.to_string());
         }
 
         // Send the exit code

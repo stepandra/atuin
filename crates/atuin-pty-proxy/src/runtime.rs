@@ -136,7 +136,7 @@ async fn run(options: RuntimeOptions) -> Result<i32, Error> {
             let path = atuin_common::fs::RemoveOnDropPath(socket_path);
             Ok::<_, InitError>((server, path))
         })
-        .inspect_err(|e| userio::log::error!("atuin pty-proxy failed to initialize server: {e}"))
+        .inspect_err(|e| userio::log::error!("pty-proxy-server-init-failed", error = e.to_string()))
         .ok();
 
     let (msg_tx, msg_rx) = mpsc::channel::<Msg>(64);

@@ -357,10 +357,10 @@ impl Keyed<'_> {
         );
 
         userio::log::info!(
-            "Uploading {} records to {}/{}",
-            expected,
-            series.host_id.0.as_simple(),
-            series.tag
+            "sync-upload-start",
+            count = expected,
+            host = series.host_id.0.as_simple().to_string(),
+            tag = series.tag.to_string()
         );
 
         while progress < expected {
@@ -482,10 +482,10 @@ impl Keyed<'_> {
         let expected = (remote + 1).saturating_sub(start);
 
         userio::log::info!(
-            "Downloading {} records from {}/{}",
-            expected,
-            series.host_id.0.as_simple(),
-            series.tag
+            "sync-download-start",
+            count = expected,
+            host = series.host_id.0.as_simple().to_string(),
+            tag = series.tag.to_string()
         );
 
         let pb = ProgressBar::new(expected);
@@ -637,12 +637,16 @@ impl Keyed<'_> {
         while let Some((i, result)) = downloads.next().await {
             match result {
                 Ok(expanded) => ids.extend(expanded),
-                Err(e) if e.is_permanent() => userio::log::error!(
-                    manifest_id = %page[i].id,
-                    host = %page[i].host.id,
-                    idx = page[i].idx,
-                    "skipping unexpandable packfile manifest: {e}. you have lost data."
-                ),
+                Err(e) if e.is_permanent() => {
+                    let _manifest = tracing::error_span!(
+                        "manifest",
+                        manifest_id = %page[i].id,
+                        host = %page[i].host.id,
+                        idx = page[i].idx
+                    )
+                    .entered();
+                    userio::log::error!("sync-packfile-unexpandable", error = e.to_string());
+                }
                 Err(e) => {
                     error!("failed to download packfile: {e:?}");
                     return Err(SyncError::RemoteRequestError {

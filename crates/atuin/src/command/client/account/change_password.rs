@@ -62,7 +62,7 @@ impl Cmd {
             }
         }
 
-        userio::log::info!("{}", fl!("change-password-success"));
+        userio::log::info!("change-password-success");
 
         Ok(())
     }

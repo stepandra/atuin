@@ -52,9 +52,9 @@ pub async fn run(_settings: &Settings) -> Result<()> {
     if changed {
         tokio::fs::write(config_file, doc.to_string()).await?;
 
-        userio::log::info!("Settings updated successfully");
+        userio::log::info!("setup-settings-updated");
     } else {
-        userio::log::info!("No settings changed");
+        userio::log::info!("setup-no-changes");
     }
 
     Ok(())

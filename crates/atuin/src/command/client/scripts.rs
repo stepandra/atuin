@@ -188,12 +188,18 @@ impl Cmd {
                                 // Convert the bytes to a string and forward to script
                                 let input = String::from_utf8_lossy(&buffer[0..n]).to_string();
                                 if let Err(e) = sender.send(input).await {
-                                    userio::log::warn!("failed to send input to script: {e}");
+                                    userio::log::warn!(
+                                        "scripts-stdin-send-failed",
+                                        error = e.to_string()
+                                    );
                                     break;
                                 }
                             },
                             Err(e) => {
-                                userio::log::warn!("failed to read from stdin: {e}");
+                                userio::log::warn!(
+                                    "scripts-stdin-read-failed",
+                                    error = e.to_string()
+                                );
                                 break;
                             }
                         }
@@ -211,7 +217,7 @@ impl Cmd {
 
         let code = exit_code.unwrap_or(-1);
         if code != 0 {
-            userio::log::warn!("script exited with code {code}");
+            userio::log::warn!("scripts-exit-code", code = code);
         }
 
         Ok(code)
@@ -309,8 +315,8 @@ impl Cmd {
                         .insert(key.to_string(), serde_json::Value::String(value.to_string()));
                     debug!("Using CLI variable: {}={}", key, value);
                 } else {
-                    userio::log::warn!("ignoring malformed variable specification: {var_str}");
-                    userio::log::info!("Variables should be specified as KEY=VALUE");
+                    userio::log::warn!("scripts-var-malformed", spec = var_str);
+                    userio::log::info!("scripts-var-format-hint");
                 }
             }
 
@@ -320,7 +326,7 @@ impl Cmd {
 
             // If there are variables in the template that weren't specified on the command line, prompt for them
             if !remaining_vars.is_empty() {
-                userio::log::info!("This script contains template variables that need values:");
+                userio::log::info!("scripts-var-prompt");
 
                 let stdin = std::io::stdin();
                 let mut input = String::new();
@@ -331,7 +337,7 @@ impl Cmd {
                     println!("Enter value for '{var}': ");
 
                     if stdin.read_line(&mut input).is_err() {
-                        userio::log::warn!("failed to read input for variable '{var}'");
+                        userio::log::warn!("scripts-var-read-failed", variable = &var);
                         // Provide an empty string as fallback
                         variable_values.insert(var, serde_json::Value::String(String::new()));
                         continue;
@@ -367,7 +373,7 @@ impl Cmd {
         let scripts = script_db.list().await?;
 
         if scripts.is_empty() {
-            userio::log::info!("No scripts found");
+            userio::log::info!("scripts-none-found");
         } else {
             println!("Available scripts:");
             for script in scripts {
@@ -506,7 +512,7 @@ impl Cmd {
             // Rebuild the database to apply changes
             script_store.build(&script_db).await?;
 
-            userio::log::info!("Script '{}' updated successfully!", edit.name);
+            userio::log::info!("scripts-updated", name = &edit.name);
 
             Ok(())
         } else {
@@ -532,7 +538,7 @@ impl Cmd {
 
                 let input = input.trim().to_lowercase();
                 if input != "y" && input != "yes" {
-                    userio::log::info!("Deletion cancelled");
+                    userio::log::info!("scripts-delete-cancelled");
                     return Ok(());
                 }
             }
@@ -543,7 +549,7 @@ impl Cmd {
             // Rebuild the database to apply changes
             script_store.build(&script_db).await?;
 
-            userio::log::info!("Script '{}' deleted successfully", delete.name);
+            userio::log::info!("scripts-deleted", name = &delete.name);
             Ok(())
         } else {
             bail!("script '{}' not found", delete.name);

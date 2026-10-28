@@ -44,8 +44,8 @@ impl Push {
         let host_id = settings.host_id().await?;
 
         if self.force {
-            userio::log::info!("Forcing remote store overwrite!");
-            userio::log::info!("Clearing remote store");
+            userio::log::info!("store-push-force");
+            userio::log::info!("store-push-clear");
 
             let caps = atuin_client::api_client::caps_client(settings)?;
             let client = Client::new(
@@ -126,7 +126,7 @@ impl Push {
 
         let (uploaded, _) = keyed.sync_remote(operations).await?;
 
-        userio::log::info!("Uploaded {uploaded} records");
+        userio::log::info!("store-push-uploaded", count = uploaded);
 
         Ok(())
     }

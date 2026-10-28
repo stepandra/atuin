@@ -313,7 +313,7 @@ impl Cmd {
             #[cfg(feature = "daemon")]
             Self::Daemon(cmd) => return cmd.run(Arc::new(settings)).await,
             Self::InternalDecoy => {
-                userio::log::error!("this command is not meant to be accessed directly");
+                userio::log::error!("client-internal-decoy");
                 std::process::exit(1);
             }
             _ => {}

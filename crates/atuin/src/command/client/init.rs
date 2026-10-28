@@ -115,9 +115,7 @@ impl Cmd {
             Shell::Fish => atuin_pty_proxy::Shell::Fish,
             Shell::Nu => atuin_pty_proxy::Shell::Nu,
             Shell::Xonsh | Shell::PowerShell => {
-                userio::log::warn!(
-                    "pty_proxy.enabled is set, but atuin pty-proxy does not support this shell"
-                );
+                userio::log::warn!("init-pty-proxy-unsupported-shell");
                 return;
             }
         };
@@ -128,20 +126,14 @@ impl Cmd {
     #[cfg(not(all(feature = "pty-proxy", unix)))]
     fn pty_proxy_init(&self, settings: &Settings) {
         if settings.pty_proxy.enabled {
-            userio::log::warn!(
-                "pty_proxy.enabled is set, but this build of atuin does not include pty-proxy \
-                 support"
-            );
+            userio::log::warn!("init-pty-proxy-not-built");
         }
     }
 
     #[instrument(level = "trace", skip_all, err)]
     pub async fn run(self, settings: &Settings) -> Result<()> {
         if !settings.paths_ok() {
-            userio::log::warn!(
-                "settings paths are broken, so atuin shell hooks are disabled; run `atuin doctor` \
-                 to diagnose"
-            );
+            userio::log::warn!("init-paths-broken");
             return Ok(());
         }
 

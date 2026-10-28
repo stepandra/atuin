@@ -168,9 +168,7 @@ pub async fn run(cmd: Cmd, settings: Settings) -> Result<()> {
     };
 
     if !settings.threads.capture {
-        userio::log::warn!(
-            "thread capture is off; run `atuin config enable threads` to record new threads"
-        );
+        userio::log::warn!("threads-capture-off");
     }
 
     let mut client = AiClient::from_settings(&settings).await?;
@@ -183,13 +181,15 @@ pub async fn run(cmd: Cmd, settings: Settings) -> Result<()> {
         client
             .wait_for_sessions(|progress| {
                 if reported.is_none() {
-                    userio::log::info!(
-                        "Threads are being rebuilt from the record store; waiting..."
-                    );
+                    userio::log::info!("threads-rebuilding");
                 }
                 let (replayed, pending) = progress;
                 if reported != Some(progress) && pending > 0 {
-                    userio::log::info!("  {replayed} of {pending} records replayed");
+                    userio::log::info!(
+                        "threads-rebuild-progress",
+                        replayed = replayed,
+                        pending = pending
+                    );
                 }
                 reported = Some(progress);
             })

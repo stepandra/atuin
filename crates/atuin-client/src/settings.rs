@@ -1556,12 +1556,14 @@ impl Settings {
             match ShellExpanded::expand(&raw) {
                 Ok(_) => {}
                 Err(ExpandError::Empty) => {
-                    userio::log::warn!("{key} is empty, so Atuin uses its default");
+                    userio::log::warn!("settings-path-empty", key = key);
                     emptied.push((key, default));
                 }
                 Err(err @ ExpandError::Variable { .. }) => userio::log::warn!(
-                    "{key}: failed to expand {raw:?} ({err}), so Atuin uses it as written; write \
-                     $$ for a literal $"
+                    "settings-path-unexpanded",
+                    key = key,
+                    raw = format!("{raw:?}"),
+                    error = err.to_string()
                 ),
             }
         }

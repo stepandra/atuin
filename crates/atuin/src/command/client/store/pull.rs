@@ -46,8 +46,8 @@ impl Pull {
             return self.pull(settings, store, db).await;
         }
 
-        userio::log::info!("Forcing local overwrite!");
-        userio::log::info!("Clearing local store");
+        userio::log::info!("store-pull-force");
+        userio::log::info!("store-pull-clear");
         store.delete_all().await?;
         let pulled = self.pull(settings, store, db).await;
         // Records only this machine had are gone, and the threads index must forget what
@@ -55,7 +55,7 @@ impl Pull {
         let reset = super::reset_ai_sessions_after(settings).await;
         match (pulled, reset) {
             (Err(pull), Err(reset)) => {
-                userio::log::error!("{reset:#}");
+                userio::log::error!("store-pull-reset-failed", error = format!("{reset:#}"));
                 Err(pull)
             }
             (pulled, reset) => pulled.and(reset),
@@ -119,7 +119,7 @@ impl Pull {
 
         let (_, downloaded) = keyed.sync_remote(operations).await?;
 
-        userio::log::info!("Downloaded {} records", downloaded.len());
+        userio::log::info!("store-pull-downloaded", count = downloaded.len());
 
         // On --force the daemon rebuilds the AI sessions from scratch after this.
         if self.force {

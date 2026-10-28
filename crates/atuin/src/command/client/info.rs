@@ -32,10 +32,16 @@ pub fn run(settings: &Settings) {
     println!("{print_out}");
 
     if let Some(legacy) = atuin_common::dirs::shadowed_legacy_config() {
-        userio::log::warn!("{}", shadowed_config_warning(&legacy, &config_file));
+        userio::log::warn!(
+            "info-shadowed-config",
+            warning = shadowed_config_warning(&legacy, &config_file)
+        );
     }
     if let Some(legacy) = atuin_common::dirs::shadowed_legacy_data_dir(&settings.data_dir) {
-        userio::log::warn!("{}", shadowed_data_dir_warning(&legacy, &settings.data_dir));
+        userio::log::warn!(
+            "info-shadowed-data-dir",
+            warning = shadowed_data_dir_warning(&legacy, &settings.data_dir)
+        );
     }
 }
 

@@ -146,8 +146,10 @@ impl Theme {
                     StyleFactory::from_fg_string(color).unwrap_or_else(|err| {
                         if debug {
                             userio::log::warn!(
-                                "tried to load string as a color unsuccessfully: ({name}={color}) \
-                                 {err}"
+                                "theme-color-invalid",
+                                name = name.to_string(),
+                                color = color,
+                                error = err
                             );
                         }
                         ContentStyle::default()
@@ -461,9 +463,9 @@ impl ThemeManager {
 
         if debug && name != theme_config.theme.name {
             userio::log::warn!(
-                "your theme config name is not the name of your loaded theme {} != {}",
-                name,
-                theme_config.theme.name
+                "theme-name-mismatch",
+                name = name,
+                config_name = theme_config.theme.name.as_str()
             );
         }
 
@@ -487,7 +489,7 @@ impl ThemeManager {
             None => match self.load_theme_from_file(name, max_depth.unwrap_or(DEFAULT_MAX_DEPTH)) {
                 Ok(theme) => theme,
                 Err(err) => {
-                    userio::log::warn!("could not load theme {name}: {err}");
+                    userio::log::warn!("theme-load-failed", name = name, error = err.to_string());
                     built_ins.get("(none)").unwrap()
                 }
             },

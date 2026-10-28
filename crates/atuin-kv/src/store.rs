@@ -169,9 +169,7 @@ impl KvStore {
         }
 
         if skipped > 0 {
-            userio::log::warn!(
-                "skipped {skipped} kv records that could not be decrypted or decoded"
-            );
+            userio::log::warn!("kv-records-skipped", skipped = skipped);
         }
 
         Ok(())

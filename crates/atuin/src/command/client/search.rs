@@ -273,7 +273,7 @@ impl Cmd {
                 // sorry
                 while !entries.is_empty() {
                     for entry in &entries {
-                        userio::log::info!("deleting {}", entry.id);
+                        userio::log::info!("search-deleting", id = entry.id.to_string());
                     }
 
                     super::history::delete_history_entries(&settings, &history_store, &db, entries)

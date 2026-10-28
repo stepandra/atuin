@@ -97,9 +97,7 @@ impl ScriptStore {
         }
 
         if skipped > 0 {
-            userio::log::warn!(
-                "skipped {skipped} script records that could not be decrypted or decoded"
-            );
+            userio::log::warn!("scripts-records-skipped", skipped = skipped);
         }
 
         Ok(ret)

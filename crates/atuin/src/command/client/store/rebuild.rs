@@ -39,7 +39,7 @@ impl Rebuild {
             // The daemon owns the sidecar, and rebuilds it. `ai-session` is the threads' record tag.
             "threads" | "ai-session" => {
                 super::reset_ai_sessions(settings).await?;
-                userio::log::info!("The daemon is rebuilding the threads index");
+                userio::log::info!("store-rebuild-threads");
             }
 
             tag => {

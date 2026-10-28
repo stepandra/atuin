@@ -312,18 +312,12 @@ pub async fn run(
 
     let history = db.range(start, end).await?;
     if history.is_empty() {
-        userio::log::info!(
-            "Your history for {year} is empty!\nMaybe 'atuin import' could help you import your \
-             previous history 🪄"
-        );
+        userio::log::info!("wrapped-history-empty", year = year);
         return Ok(());
     }
 
     let Some(stats) = compute(settings, &history, 10, 1) else {
-        userio::log::info!(
-            "No commands found in your {year} history. Run a command or check your config for \
-             commands ignored by stats.ignored_commands."
-        );
+        userio::log::info!("wrapped-no-commands", year = year);
         return Ok(());
     };
     let alias_map = HashMap::new();

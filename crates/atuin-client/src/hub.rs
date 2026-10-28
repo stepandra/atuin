@@ -327,7 +327,7 @@ pub async fn link_account(
 
     handle_resp_error(resp).await?;
 
-    userio::log::info!("Successfully linked CLI account to Hub");
+    userio::log::info!("hub-linked");
     Ok(())
 }
 

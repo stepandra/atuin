@@ -17,20 +17,20 @@ pub async fn run(settings: &Settings) -> Result<()> {
     let hub_address = settings.hub_endpoint();
 
     if hub_token.is_some() {
-        userio::log::info!("{}", fl!("link-both-sessions"));
+        userio::log::info!("link-both-sessions");
     } else {
-        userio::log::info!("{}", fl!("link-hub-login-first"));
+        userio::log::info!("link-hub-login-first");
 
         let session = atuin_client::hub::HubAuthSession::start(&hub_address).await?;
 
         userio::log::info!(
-            "{}\n{}",
-            if session.open_in_browser() {
+            "link-hub-open",
+            instructions = if session.open_in_browser() {
                 fl!("account-hub-browser-opened")
             } else {
                 fl!("account-hub-open-url")
             },
-            session.auth_url
+            url = session.auth_url.to_string()
         );
 
         let token = session
@@ -42,11 +42,11 @@ pub async fn run(settings: &Settings) -> Result<()> {
             .await?;
 
         atuin_client::hub::save_session(&token, settings).await?;
-        userio::log::info!("{}", fl!("link-hub-complete"));
+        userio::log::info!("link-hub-complete");
     }
 
     atuin_client::hub::link_account(&hub_address, &cli_token, settings).await?;
-    userio::log::info!("{}", fl!("link-success"));
+    userio::log::info!("link-success");
 
     Ok(())
 }

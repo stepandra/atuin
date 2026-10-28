@@ -63,7 +63,7 @@ pub enum Cmd {
 /// has already happened.
 pub async fn invalidate_ai_sessions(settings: &Settings) {
     if let Err(err) = atuin_client::ai_session::invalidate_sidecar(settings).await {
-        userio::log::warn!("failed to schedule a rebuild of the threads index: {err}");
+        userio::log::warn!("store-threads-invalidate-failed", error = err.to_string());
     }
 }
 
@@ -137,7 +137,7 @@ impl Cmd {
                 #[cfg(not(feature = "daemon"))]
                 let rewritten = store.compact().await?;
 
-                userio::log::info!("Rewrote {rewritten} records");
+                userio::log::info!("store-compact-done", count = rewritten);
                 Ok(())
             }
             Self::Verify(verify) => verify.run(settings, store).await,

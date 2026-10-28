@@ -86,7 +86,7 @@ impl Cmd {
         let launch = self.launch();
         match self.subcmd {
             None => {
-                userio::log::warn!("`atuin daemon` is deprecated, use `atuin daemon start`");
+                userio::log::warn!("daemon-deprecated");
                 run(settings, false, launch).await
             }
             Some(SubCmd::Start { force, .. }) => run(settings, force, launch).await,
@@ -220,7 +220,7 @@ pub async fn project_synced_ai_sessions(settings: &Settings) -> Result<()> {
         Ok(Err(err)) if is_legacy_daemon_error(&err) => Ok(()),
         Ok(projected) => projected,
         Err(_) => {
-            userio::log::info!("Indexing threads in the background");
+            userio::log::info!("daemon-indexing-threads");
             Ok(())
         }
     }
@@ -265,22 +265,22 @@ pub(super) async fn stop_cmd(settings: &Settings) -> Result<()> {
     let service = match ActiveService::find(settings).await {
         Ok(Some(service)) => service,
         Ok(None) => {
-            userio::log::info!("Daemon is not running");
+            userio::log::info!("daemon-not-running");
             return Ok(());
         }
         // One that can't answer can't be asked to stop either.
         Err(ServiceFindError::Find(FindError::Unresponsive(_))) => {
             ActiveService::evict(&settings.daemon).await?;
-            userio::log::info!("Daemon stopped");
+            userio::log::info!("daemon-stopped");
             return Ok(());
         }
         Err(err) => return Err(err.into()),
     };
 
     match service.stop().await {
-        Ok(()) => userio::log::info!("Daemon stopped"),
+        Ok(()) => userio::log::info!("daemon-stopped"),
         Err(StopError::Pidfile(PidfileWaitError::StillHeld { .. })) => {
-            userio::log::info!("Daemon may still be shutting down");
+            userio::log::info!("daemon-may-be-stopping");
         }
         Err(err) => return Err(err.into()),
     }
@@ -291,20 +291,20 @@ pub(super) async fn stop_cmd(settings: &Settings) -> Result<()> {
 pub(super) async fn restart_cmd(settings: &Settings, only_if_running: bool) -> Result<()> {
     let service = match ActiveService::find(settings).await {
         Ok(Some(service)) => {
-            userio::log::info!("Restarting daemon...");
+            userio::log::info!("daemon-restarting");
             service.restart().await?
         }
         Ok(None) if only_if_running => {
-            userio::log::info!("No daemon running");
+            userio::log::info!("daemon-none-running");
             return Ok(());
         }
         Ok(None) => {
-            userio::log::info!("No daemon running");
-            userio::log::info!("Starting daemon...");
+            userio::log::info!("daemon-none-running");
+            userio::log::info!("daemon-starting");
             ActiveService::find_or_spawn(settings).await?
         }
         Err(ServiceFindError::Find(FindError::Unresponsive(_))) => {
-            userio::log::info!("Daemon isn't answering, replacing it...");
+            userio::log::info!("daemon-replacing-unresponsive");
             ActiveService::evict(&settings.daemon).await?;
             ActiveService::find_or_spawn(settings).await?
         }
@@ -313,9 +313,9 @@ pub(super) async fn restart_cmd(settings: &Settings, only_if_running: bool) -> R
 
     let status = service.into_client().status().await?;
 
-    userio::log::info!("Daemon restarted");
-    userio::log::info!("  PID:      {}", status.pid);
-    userio::log::info!("  Version:  {}", status.version);
+    userio::log::info!("daemon-restarted");
+    userio::log::info!("daemon-restarted-pid", pid = status.pid);
+    userio::log::info!("daemon-restarted-version", version = status.version);
 
     Ok(())
 }

@@ -15,6 +15,8 @@ version.workspace = true
 clap = { workspace = true }
 easy-cast = { workspace = true }
 
+i18n-embed = { workspace = true }
+rust-embed = { workspace = true }
 [target.'cfg(unix)'.dependencies]
 atuin-client = { workspace = true }
 atuin-common = { workspace = true, features = ["os"] }

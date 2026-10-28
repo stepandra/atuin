@@ -9,9 +9,9 @@ pub async fn logout(settings: &Settings) -> Result<()> {
     if meta.logged_in().await? {
         meta.delete_session().await?;
         meta.delete_hub_session().await?;
-        userio::log::info!("You have logged out!");
+        userio::log::info!("logout-done");
     } else {
-        userio::log::info!("You are not logged in");
+        userio::log::info!("logout-not-logged-in");
     }
 
     Ok(())

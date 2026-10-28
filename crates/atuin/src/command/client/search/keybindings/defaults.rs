@@ -445,7 +445,11 @@ fn apply_config_to_keymap(keymap: &mut Keymap, overrides: &HashMap<String, KeyBi
         let key = match KeyInput::parse(key_str) {
             Ok(k) => k,
             Err(e) => {
-                userio::log::warn!("invalid key in keymap config: {key_str:?}: {e}");
+                userio::log::warn!(
+                    "search-keymap-invalid-key",
+                    key = format!("{key_str:?}"),
+                    error = e
+                );
                 continue;
             }
         };
@@ -454,7 +458,11 @@ fn apply_config_to_keymap(keymap: &mut Keymap, overrides: &HashMap<String, KeyBi
                 keymap.bindings.insert(key, binding);
             }
             Err(e) => {
-                userio::log::warn!("invalid binding for {key_str:?} in keymap config: {e}");
+                userio::log::warn!(
+                    "search-keymap-invalid-binding",
+                    key = format!("{key_str:?}"),
+                    error = e
+                );
             }
         }
     }

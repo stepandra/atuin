@@ -120,7 +120,8 @@ impl Drop for UpdateOnWindowsContext {
             // The update failed, roll back the current exe to its initial name.
             std::fs::rename(exe.with_file_name(Self::OLD_FILE_NAME), exe).unwrap_or_else(|e| {
                 atuin_common::userio::log::error!(
-                    "failed to roll back the update, you may need to reinstall Atuin: {e}"
+                    "plugin-update-rollback-failed",
+                    error = e.to_string()
                 );
             });
         }

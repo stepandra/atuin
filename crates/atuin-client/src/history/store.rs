@@ -334,11 +334,7 @@ impl HistoryStore {
         }
 
         if skipped > 0 {
-            userio::log::warn!(
-                "skipped {skipped} history records that could not be decrypted or decoded; run \
-                 `atuin store verify` to check your store, and `atuin store purge` to remove \
-                 broken records locally"
-            );
+            userio::log::warn!("history-records-skipped", skipped = skipped);
         }
 
         Ok(ret)
