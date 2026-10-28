@@ -35,11 +35,13 @@
 //! writes it to `workspace.yaml` (`name`, with `user_named` when `--name` or `/rename` set it,
 //! neither of which writes an event). The reader checks the sidecar as each line of the log
 //! arrives, and yields the name as a row of its own (a system row with nothing but the title,
-//! timed by the sidecar's modification time) whenever it has changed, the first line of a read
-//! included: capture keys such a row on its content, so a re-read names the session again
-//! without a new row, and a rename is a row of its own however long after the last message it
-//! came. A rename after the log's last line (then `/exit`, which writes one) is picked up by
-//! the next line written.
+//! timed by the sidecar's modification time, and with an id made of the two) whenever it has
+//! changed, the first line of a read included: a re-read, or a read resumed past a checkpoint,
+//! yields the same row again under the same id, so the session is named again without a new
+//! row, and a rename is a row of its own however long after the last message it came. A rename
+//! after the log's last line (then `/exit`, which writes one) is picked up by the next line
+//! written. Such a row says nothing of where the session works: the context the log's lines
+//! carry is theirs.
 //!
 //! **Ids.** Every event has a `parentId`, the event before it, bookkeeping included: a chain
 //! through rows the reader skips. The rows are read in file order, so none names a parent.
@@ -316,7 +318,7 @@ impl CopilotSession {
                 let watch = Arc::clone(&sidecar);
                 let renamed = self.pool.run(move || watch.lock().refresh()).await.ok().flatten();
                 if let Some((title, at)) = renamed {
-                    yield Ok((checkpoint, reading.title_row(title, at)));
+                    yield Ok((checkpoint, Reading::title_row(title, at)));
                 }
             }
         }
@@ -490,25 +492,33 @@ impl Reading {
     }
 
     /// A row carrying `title`, which the sidecar gave the session at `at` (see the module docs).
-    fn title_row(&self, title: TitleChange, at: Option<SystemTime>) -> CopilotMessage {
+    /// Its id is the name's and the time's, so the same name read again is the same row.
+    fn title_row(title: TitleChange, at: Option<SystemTime>) -> CopilotMessage {
+        let at = at.map(OffsetDateTime::from);
+        let keyed = serde_json::json!([title, at.map(OffsetDateTime::unix_timestamp_nanos)]);
+        let id = format!(
+            "{TITLE_ROW}-{:016x}",
+            xxhash_rust::xxh3::xxh3_64(keyed.to_string().as_bytes())
+        );
         CopilotMessage {
             event: Envelope {
                 kind: TITLE_ROW.to_owned(),
-                id: None,
+                id: Some(id),
                 timestamp: None,
                 data: serde_json::Value::Null,
             },
-            cwd: self.cwd.clone(),
-            git_branch: self.git_branch.clone(),
+            cwd: None,
+            git_branch: None,
             usage: None,
             title: Some(title),
-            at: at.map(OffsetDateTime::from),
+            at,
         }
     }
 }
 
-/// The kind of the reader's own title rows, which no Copilot event has.
-const TITLE_ROW: &str = "atuin.title";
+/// The kind of the reader's own title rows, which no Copilot event has, and the prefix of their
+/// ids.
+const TITLE_ROW: &str = "atuin-title";
 
 /// A `session.usage_record`'s `usage` as [`Usage`] counts it: Copilot's `inputTokens` is the
 /// whole input, cached included, so the cached part is taken out of it.
@@ -1126,17 +1136,28 @@ mod tests {
         let title = &messages[0];
         assert_eq!(title.role(), Role::System);
         assert!(title.content().is_empty());
-        assert!(title.id().is_none(), "keyed on its content");
         assert_eq!(title.title(), Some(TitleChange::new(TitleSource::Named, "atuin-sample-edit")));
         assert!(title.timestamp().is_some());
+        // Nothing of where the session works: the log's lines say, and a title row read again
+        // long after must not say otherwise.
+        assert_eq!(title.cwd(), None);
+        assert_eq!(title.git_branch(), None);
         assert_eq!(messages.iter().filter(|m| m.title().is_some()).count(), 1);
         assert_eq!(messages.len(), parse(TASK_AND_EDIT).len() + 1);
 
+        // Read again, the same row, under the same id: no new row for an unchanged name.
+        let id = title.id().expect("a title row has an id of its own");
+        assert!(id.as_ref().starts_with("atuin-title-"), "{id}");
+        let again = read_all(root.path(), "s").await;
+        assert_eq!(again[0].id(), Some(id.clone()));
+
+        // Renamed, another row.
         let renamed = TASK_AND_EDIT_SIDECAR.replace("atuin-sample-edit", "renamed");
         std::fs::write(root.path().join("s").joined(SIDECAR_FILE), renamed).unwrap();
         let again = read_all(root.path(), "s").await;
         let titles: Vec<_> = again.iter().filter_map(Message::title).collect();
         assert_eq!(titles, [TitleChange::new(TitleSource::Named, "renamed")]);
+        assert_ne!(again[0].id(), Some(id));
     }
 
     #[rstest]
