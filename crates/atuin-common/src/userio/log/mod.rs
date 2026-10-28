@@ -13,12 +13,10 @@
 //!
 //! Under the hood, this is implemented through [`tracing`] and every wrapped here--[`info!`],
 //! [`warn!`], and [`error!`] in reality emit [`tracing`] events that custom layers handle.
-#[cfg(feature = "user-layer")]
 mod layer;
 mod sink;
 mod stack;
 
-#[cfg(feature = "user-layer")]
 pub use layer::UserLayer;
 pub use sink::{Channel, Message, Nop, Severity, Sink, Stderr};
 pub use stack::{SINK, SinkGuard, SinkStack};

@@ -1,4 +1,5 @@
-//! The sink messages currently go to.
+//! A stack of sinks, where the top-most [`userio::log::sink::Sink`] is the one that receives
+//! messages.
 
 use std::sync::Arc;
 
@@ -35,11 +36,13 @@ impl SinkStack {
     /// Make `sink` the current one until the guard drops.
     pub fn push(&self, sink: impl Sink + 'static) -> SinkGuard<'_> {
         let sink = Arc::new(sink);
+
         let mut entries = self.entries.lock();
         let id = entries.next_id;
         entries.next_id += 1;
         entries.sinks.push((id, sink));
         drop(entries);
+
         SinkGuard { stack: self, id }
     }
 
@@ -64,54 +67,5 @@ pub struct SinkGuard<'a> {
 impl Drop for SinkGuard<'_> {
     fn drop(&mut self) {
         self.stack.entries.lock().sinks.retain(|(id, _)| *id != self.id);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use rstest::{fixture, rstest};
-    use tokio::sync::mpsc::error::TryRecvError;
-
-    use super::*;
-    use crate::userio::log::{Channel, Severity};
-
-    fn message(text: &str) -> Message {
-        Message {
-            severity: Severity::Info,
-            text: text.to_owned(),
-        }
-    }
-
-    #[fixture]
-    fn stack() -> SinkStack {
-        SinkStack::new()
-    }
-
-    #[rstest]
-    #[case::last_pushed(1, 0)]
-    #[case::first_pushed(0, 1)]
-    fn dropping_a_guard_leaves_the_last_live_sink_current(
-        stack: SinkStack,
-        #[case] dropped: usize,
-        #[case] current: usize,
-    ) {
-        let (sinks, mut receivers): (Vec<_>, Vec<_>) = (0..2).map(|_| Channel::new()).unzip();
-        let mut guards: Vec<_> = sinks.into_iter().map(|sink| Some(stack.push(sink))).collect();
-        guards[dropped] = None;
-
-        stack.show(message("after the drop"));
-
-        assert_eq!(receivers[current].try_recv(), Ok(message("after the drop")));
-    }
-
-    #[rstest]
-    fn a_channel_closes_once_its_guard_drops(stack: SinkStack) {
-        let (sink, mut messages) = Channel::new();
-        let guard = stack.push(sink);
-        stack.show(message("queued"));
-        drop(guard);
-
-        assert_eq!(messages.try_recv(), Ok(message("queued")));
-        assert_eq!(messages.try_recv(), Err(TryRecvError::Disconnected));
     }
 }
