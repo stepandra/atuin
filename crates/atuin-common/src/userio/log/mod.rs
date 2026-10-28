@@ -27,6 +27,19 @@ pub const USER: &str = "atuin-user";
 #[doc(hidden)]
 pub use tracing as __tracing;
 
+// tracing skips the arguments of an event whose level is compiled out, and callers may rely on
+// them running, so no build may compile out `info!`, `warn!` or `error!`. A static max level that
+// keeps INFO keeps the other two.
+const _: () = assert!(
+    matches!(
+        tracing::level_filters::STATIC_MAX_LEVEL,
+        tracing::level_filters::LevelFilter::INFO
+            | tracing::level_filters::LevelFilter::DEBUG
+            | tracing::level_filters::LevelFilter::TRACE
+    ),
+    "userio::log's info!, warn! and error! must not be compiled out by `max_level_*` features"
+);
+
 /// [`tracing::info!`] for a message the user reads, on the [`USER`] target.
 #[macro_export]
 macro_rules! __atuin_log_info {
